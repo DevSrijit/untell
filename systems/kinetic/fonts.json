@@ -1,0 +1,29 @@
+[
+ {
+  "family": "Archivo Black",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/archivo-black"
+ },
+ {
+  "family": "Archivo",
+  "weights": [
+   600,
+   700
+  ],
+  "pkg": "@fontsource/archivo",
+  "italic": [
+   600,
+   700
+  ]
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
