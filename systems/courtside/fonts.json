@@ -1,0 +1,28 @@
+[
+ {
+  "family": "Anton",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/anton"
+ },
+ {
+  "family": "Barlow Condensed",
+  "weights": [
+   600,
+   700
+  ],
+  "pkg": "@fontsource/barlow-condensed",
+  "italic": [
+   600
+  ]
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
