@@ -1,0 +1,39 @@
+[
+ {
+  "family": "Instrument Serif",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/instrument-serif",
+  "italic": [
+   400
+  ]
+ },
+ {
+  "family": "Instrument Sans",
+  "weights": [
+   400,
+   500
+  ],
+  "pkg": "@fontsource/instrument-sans",
+  "italic": [
+   400
+  ]
+ },
+ {
+  "family": "Noto Sans",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans",
+  "fallback": true
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
