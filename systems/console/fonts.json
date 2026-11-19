@@ -1,0 +1,22 @@
+[
+ {
+  "family": "JetBrains Mono",
+  "weights": [
+   400,
+   700
+  ],
+  "pkg": "@fontsource/jetbrains-mono",
+  "italic": [
+   400,
+   700
+  ]
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
