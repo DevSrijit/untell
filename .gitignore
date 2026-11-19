@@ -1,0 +1,19 @@
+node_modules/
+out/
+.env
+.DS_Store
+__pycache__/
+# Media that you add with untell media add. Bring your own files; they are not part of the repository.
+assets/media/*/
+.untell/
+.venv-media/
+.venv-audio/
+.hyperframes/
+web/player.js
+web/detect-*
+web/snap-*
+web/run-*
+web/fonts/
+packages/untell/dist/
+packages/untell/registry/
+packages/untell/src/capture-samplers.gen.ts
