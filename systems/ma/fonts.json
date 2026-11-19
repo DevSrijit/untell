@@ -1,0 +1,24 @@
+[
+ {
+  "family": "Shippori Mincho",
+  "weights": [
+   500
+  ],
+  "pkg": "@fontsource/shippori-mincho"
+ },
+ {
+  "family": "Zen Kaku Gothic New",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/zen-kaku-gothic-new"
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
