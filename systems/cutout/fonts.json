@@ -1,0 +1,29 @@
+[
+ {
+  "family": "Bebas Neue",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/bebas-neue"
+ },
+ {
+  "family": "Archivo",
+  "weights": [
+   500,
+   600
+  ],
+  "pkg": "@fontsource/archivo",
+  "italic": [
+   500,
+   600
+  ]
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
