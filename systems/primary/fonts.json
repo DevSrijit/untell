@@ -1,0 +1,23 @@
+[
+ {
+  "family": "Jost",
+  "weights": [
+   500,
+   600,
+   700
+  ],
+  "pkg": "@fontsource/jost",
+  "italic": [
+   500,
+   700
+  ]
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
