@@ -1,0 +1,37 @@
+[
+ {
+  "family": "Tinos",
+  "weights": [
+   700
+  ],
+  "pkg": "@fontsource/tinos",
+  "italic": [
+   700
+  ]
+ },
+ {
+  "family": "Courier Prime",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/courier-prime",
+  "italic": [
+   400
+  ]
+ },
+ {
+  "family": "Space Mono",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/space-mono"
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
