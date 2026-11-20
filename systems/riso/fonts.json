@@ -1,0 +1,26 @@
+[
+ {
+  "family": "Bricolage Grotesque",
+  "weights": [
+   700,
+   800
+  ],
+  "pkg": "@fontsource/bricolage-grotesque"
+ },
+ {
+  "family": "Space Grotesk",
+  "weights": [
+   500,
+   600
+  ],
+  "pkg": "@fontsource/space-grotesk"
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
