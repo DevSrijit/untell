@@ -1,0 +1,31 @@
+[
+ {
+  "family": "Geist",
+  "weights": [
+   400,
+   500,
+   600
+  ],
+  "pkg": "@fontsource/geist",
+  "italic": [
+   400,
+   500,
+   600
+  ]
+ },
+ {
+  "family": "Geist Mono",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/geist-mono"
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
