@@ -1,0 +1,24 @@
+[
+ {
+  "family": "Nunito",
+  "weights": [
+   700,
+   800,
+   900
+  ],
+  "pkg": "@fontsource/nunito",
+  "italic": [
+   700,
+   800,
+   900
+  ]
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
