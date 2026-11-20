@@ -1,0 +1,21 @@
+[
+ {
+  "family": "Cormorant Garamond",
+  "weights": [
+   500,
+   600
+  ],
+  "pkg": "@fontsource/cormorant-garamond",
+  "italic": [
+   500
+  ]
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
