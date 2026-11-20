@@ -1,0 +1,27 @@
+[
+ {
+  "family": "Playfair Display",
+  "weights": [
+   700
+  ],
+  "pkg": "@fontsource/playfair-display",
+  "italic": [
+   700
+  ]
+ },
+ {
+  "family": "Bebas Neue",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/bebas-neue"
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
