@@ -1,0 +1,29 @@
+[
+ {
+  "family": "IBM Plex Sans",
+  "weights": [
+   400,
+   600
+  ],
+  "pkg": "@fontsource/ibm-plex-sans",
+  "italic": [
+   400,
+   600
+  ]
+ },
+ {
+  "family": "IBM Plex Mono",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/ibm-plex-mono"
+ },
+ {
+  "family": "Noto Sans Math",
+  "weights": [
+   400
+  ],
+  "pkg": "@fontsource/noto-sans-math",
+  "fallback": true
+ }
+]
