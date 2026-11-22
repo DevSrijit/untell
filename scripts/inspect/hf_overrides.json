@@ -1,0 +1,124 @@
+{
+ "console": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Console's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "courtside": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Courtside's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "cutout": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Cutout's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "graphite": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Graphite's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "keynote": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Keynote's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "kinetic": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Kinetic ends on a cut with no hold: \"The last line lands on the track's loudest bar, then a hard cut to the ground on the bar. No static restatement. The drop on the reveal wins over this: when no loudest bar falls after the reveal in the film's window, the last line lands on the next strong bar after the reveal (a bar of `beats().bars`, or a cut point of `beats().cuts`), and the cut to the ground comes on the bar after it.\""
+  }
+ },
+ "ma": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Ma's end holds its last change 1 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  },
+  "dead_stretch": {
+   "severity": "advice",
+   "why": "Ma may hold still for 4 s (direction maxStill): stillness is part of its pace"
+  }
+ },
+ "manual": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Manual's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "matte": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Matte's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "nocturne": {
+  "dead_stretch": {
+   "severity": "advice",
+   "why": "Nocturne may hold still for 3 s (direction maxStill): stillness is part of its pace"
+  }
+ },
+ "noir": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Noir's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "pop": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Pop's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "primary": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Primary's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "raw": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Raw's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  },
+  "film_silent": {
+   "severity": "off",
+   "why": "Raw has no music bed (media.music.level 0): silence is its sound"
+  }
+ },
+ "riso": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Riso's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "schematic": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Schematic's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "spec": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Spec's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "studio": {
+  "line_unread": {
+   "severity": "off",
+   "why": "Studio's end holds its last change 1.5 s (direction ends.hold), under HyperFrames' 2 s for a closing line; untell's reading-time check judges the last line by its words"
+  }
+ },
+ "title": {
+  "dead_stretch": {
+   "severity": "advice",
+   "why": "Title may hold still for 3 s (direction maxStill): stillness is part of its pace"
+  }
+ }
+}

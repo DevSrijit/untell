@@ -1,0 +1,13 @@
+{
+ "about": "Cases for the one cover verdict: scripts/inspect/checks/cover_rule.py judge(), which the kit's placeBehind (src/system/scene/cover.ts) must give too. Each letter is [char, hidden share, ink box area, contrast or null]. fails lists the rules that fail.",
+ "cases": [
+  {"name": "no letters", "letters": [], "fails": []},
+  {"name": "one letter just over the letter limit", "letters": [["A", 0.31, 100, null]], "fails": ["letter", "word"]},
+  {"name": "a letter at the limit passes", "letters": [["A", 0.30, 100, null], ["B", 0.0, 100, null], ["C", 0.0, 100, null]], "fails": []},
+  {"name": "every letter a little hidden: the word fails", "letters": [["A", 0.2, 100, null], ["B", 0.2, 100, null], ["C", 0.2, 100, null]], "fails": ["word"]},
+  {"name": "one letter half hidden among nine clear ones", "letters": [["A", 0.5, 100, null], ["B", 0, 100, null], ["C", 0, 100, null], ["D", 0, 100, null], ["E", 0, 100, null], ["F", 0, 100, null], ["G", 0, 100, null], ["H", 0, 100, null], ["I", 0, 100, null], ["J", 0, 100, null]], "fails": ["letter"]},
+  {"name": "a hidden letter that reads on the cut-out (3:1) counts half", "letters": [["A", 0.5, 100, 3.0], ["B", 0, 100, null], ["C", 0, 100, null], ["D", 0, 100, null], ["E", 0, 100, null], ["F", 0, 100, null], ["G", 0, 100, null], ["H", 0, 100, null], ["I", 0, 100, null], ["J", 0, 100, null]], "fails": []},
+  {"name": "under 3:1 it counts in full", "letters": [["A", 0.5, 100, 2.9]], "fails": ["letter", "word"]},
+  {"name": "the word share weighs each letter by its area", "letters": [["W", 0.2, 900, null], ["i", 0.0, 100, null]], "fails": ["word"]}
+ ]
+}
