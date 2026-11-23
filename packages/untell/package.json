@@ -1,0 +1,53 @@
+{
+  "name": "untell",
+  "version": "0.1.0",
+  "description": "The video framework for coding agents. Design systems, blocks, and eyes that check every frame and every beat. Runs on Remotion and HyperFrames.",
+  "keywords": [
+    "video",
+    "remotion",
+    "hyperframes",
+    "motion-graphics",
+    "design-system",
+    "ai-agents",
+    "claude-code",
+    "codex",
+    "linter",
+    "render",
+    "ffmpeg"
+  ],
+  "license": "MIT",
+  "author": "Srijit Ghosh",
+  "homepage": "https://github.com/devsrijit/untell#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devsrijit/untell.git",
+    "directory": "packages/untell"
+  },
+  "bugs": {
+    "url": "https://github.com/devsrijit/untell/issues"
+  },
+  "type": "module",
+  "bin": {
+    "untell": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "registry",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "pack:kit": "bun scripts/pack.ts",
+    "prepack": "bun scripts/pack.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "esbuild": "0.28.1",
+    "playwright-core": "1.65.1"
+  }
+}
