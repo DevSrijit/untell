@@ -1,0 +1,5 @@
+#!/bin/sh
+# untell listen: runs scripts/listen/listen.py in the audio environment (.venv-audio at the repo root).
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+export HYPERFRAMES_NO_TELEMETRY=1 DO_NOT_TRACK=1 TOKENIZERS_PARALLELISM=false PYTHONWARNINGS=ignore
+exec "$ROOT/.venv-audio/bin/python" "$ROOT/scripts/listen/listen.py" "$@"
