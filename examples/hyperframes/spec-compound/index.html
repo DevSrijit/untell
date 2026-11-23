@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en" data-resolution="portrait">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/CustomEase.min.js"></script>
+    <!-- The Spec design system. Every colour, font, size and curve below comes from this file. -->
+    <link rel="stylesheet" href="assets/tokens.css" />
+    <style>
+      @font-face { font-family: "Geist"; font-weight: 400; src: url("assets/fonts/geist-latin-400-normal.woff2") format("woff2"); }
+      @font-face { font-family: "Geist"; font-weight: 500; src: url("assets/fonts/geist-latin-500-normal.woff2") format("woff2"); }
+      @font-face { font-family: "Geist"; font-weight: 600; src: url("assets/fonts/geist-latin-600-normal.woff2") format("woff2"); }
+      @font-face { font-family: "Geist Mono"; font-weight: 400; src: url("assets/fonts/geist-mono-latin-400-normal.woff2") format("woff2"); }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--color-ground); }
+      #root { position: relative; width: 1080px; height: 1920px; background: var(--color-ground); color: var(--color-ink); }
+      .abs { position: absolute; }
+      .line { display: block; overflow: hidden; }
+      .line > span { display: inline-block; }
+      .muted { color: var(--color-ink-muted); }
+      .num { font-variant-numeric: tabular-nums; }
+      .on-ink { color: var(--color-ground); }
+      svg { position: absolute; inset: 0; overflow: visible; }
+      .hair { stroke: var(--color-rule); stroke-width: var(--stroke); fill: none; }
+      .mark { stroke: var(--color-ink); stroke-width: var(--stroke); fill: none; }
+      .bar { position: absolute; transform-origin: 0 50%; }
+      .s1 { background: var(--color-series-1); }
+      .s3 { background: var(--color-series-3); }
+    </style>
+  </head>
+  <body>
+    <!--
+      Geometry, 9:16. Text stays inside the area that TikTok, Reels and Shorts all leave clear:
+      x 120 to 888 px and y 288 to 1248 px; below y 840 px, text also ends by x 780 px (TikTok's side buttons).
+      The drawn grid is that area.
+    -->
+    <div id="root" data-system="spec" data-composition-id="main" data-start="0" data-duration="11.5" data-width="1080" data-height="1920">
+      <svg viewBox="0 0 1080 1920" width="1080" height="1920" aria-hidden="true" data-layout-ignore>
+        <line id="g-top" class="hair" x1="0" y1="288" x2="1080" y2="288" />
+        <line id="g-bottom" class="hair" x1="0" y1="1248" x2="1080" y2="1248" />
+        <line id="g-left" class="hair" x1="120" y1="0" x2="120" y2="1920" />
+        <line id="g-right" class="hair" x1="888" y1="0" x2="888" y2="1920" />
+        <g id="crosses" class="mark">
+          <path d="M108 288h24M120 276v24" /><path d="M876 288h24M888 276v24" />
+          <path d="M108 1248h24M120 1236v24" /><path d="M876 1248h24M888 1236v24" />
+        </g>
+        <!-- Dimension line under the late bar: the money that starting late gives up. -->
+        <g id="dim" class="mark">
+          <path id="dim-line" d="M477 872H888" />
+          <path id="dim-ticks" d="M477 860v24M888 860v24" />
+        </g>
+      </svg>
+
+      <div id="label" class="abs type-label muted" style="left: 120px; top: 304px">01 / Compound interest</div>
+
+      <!-- Scene 1: the claim. -->
+      <h1 id="s1-head" class="abs type-display" style="left: 120px; top: 400px; width: 768px">
+        <span class="line"><span>Time beats</span></span>
+        <span class="line"><span>money.</span></span>
+      </h1>
+      <div id="s1-body" class="abs type-body muted" style="left: 120px; top: 700px; width: 768px">
+        <span class="line"><span>$200 a month at 7 %.</span></span>
+        <span class="line"><span>One saver starts ten years later.</span></span>
+      </div>
+
+      <!-- Scene 2: the evidence, as two rows. -->
+      <h2 id="s2-head" class="abs type-headline" style="left: 120px; top: 380px">
+        <span class="line"><span>Saved by age 65</span></span>
+      </h2>
+      <div id="cap-early" class="abs type-label" style="left: 120px; top: 500px">Starts at 25</div>
+      <div id="bar-early" class="bar s1" style="left: 120px; top: 552px; width: 768px; height: 100px"></div>
+      <div id="val-early" class="abs type-headline num on-ink" style="left: 144px; top: 564px">$524,963</div>
+      <div id="cap-late" class="abs type-label muted" style="left: 120px; top: 676px">Starts at 35</div>
+      <div id="bar-late" class="bar s3" style="left: 120px; top: 728px; width: 357px; height: 100px"></div>
+      <div id="val-late" class="abs type-headline num" style="left: 501px; top: 740px">$243,994</div>
+      <div id="dim-label" class="abs type-label num muted" style="left: 501px; top: 892px">−$280,969</div>
+
+      <!-- Scene 3: the gap becomes the answer. -->
+      <div id="s3-head" class="abs type-display num" style="left: 120px; top: 980px">
+        <span class="line"><span>2.15×</span></span>
+      </div>
+      <div id="s3-cap" class="abs type-caption muted" style="left: 120px; top: 1120px; width: 660px">
+        Ten years sooner, 2.15 times the money.
+      </div>
+    </div>
+
+    <script>
+      gsap.registerPlugin(CustomEase);
+      const css = getComputedStyle(document.documentElement);
+      const curve = (name) => "M0,0 C" + css.getPropertyValue("--ease-" + name).replace(/cubic-bezier\(|\)/g, "").split(",").map((v) => v.trim()).join(",") + " 1,1";
+      const ENTER = CustomEase.create("enter", curve("enter"));
+      const MOVE = CustomEase.create("move", curve("move"));
+      const EXIT = CustomEase.create("exit", curve("exit"));
+      const F = (name) => Number(css.getPropertyValue("--frames-" + name)) / 30; // frames to seconds
+      const enter = F("enter"), move = F("move"), exit = F("exit"), stagger = F("stagger");
+
+      // Initial state, outside the timeline: nothing is on screen at frame 0.
+      const LATER = ["#label", "#s1-head", "#s1-body", "#s2-head", "#cap-early", "#cap-late", "#val-early", "#val-late",
+        "#dim-label", "#s3-head", "#s3-cap", "#dim"];
+      gsap.set(LATER, { autoAlpha: 0 });
+      gsap.set(".line > span", { yPercent: 105 });
+      gsap.set(["#bar-early", "#bar-late"], { scaleX: 0 });
+
+      const tl = gsap.timeline({ paused: true });
+      const lines = (sel) => gsap.utils.toArray(sel + " .line > span");
+      // A line rises out of its own mask; it sinks the same way, then its block leaves the page.
+      const rise = (sel, at) => {
+        tl.set(sel, { autoAlpha: 1 }, at);
+        tl.fromTo(lines(sel), { yPercent: 105 }, { yPercent: 0, duration: enter, ease: ENTER, stagger }, at);
+      };
+      const sink = (sel, at) => {
+        tl.to(lines(sel), { yPercent: -105, duration: exit, ease: EXIT, stagger }, at);
+        tl.set(sel, { autoAlpha: 0 }, at + exit + stagger * lines(sel).length);
+      };
+      const typeOn = (sel, at, chars) => {
+        tl.set(sel, { autoAlpha: 1 }, at);
+        tl.fromTo(sel, { clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)", duration: chars * 0.025, ease: `steps(${chars})` }, at);
+      };
+      const draw = (sel, at, dur = move) => gsap.utils.toArray(sel).forEach((el) => {
+        const len = el.getTotalLength();
+        tl.fromTo(el, { strokeDasharray: len, strokeDashoffset: len }, { strokeDashoffset: 0, duration: dur, ease: MOVE }, at);
+      });
+      const show = (sel, at) => tl.fromTo(sel, { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: enter, ease: ENTER }, at);
+
+      // Scene 1, 0 to 4 s: the grid draws, then the claim.
+      draw("#g-top, #g-bottom, #g-left, #g-right", 0);
+      tl.fromTo("#crosses path", { opacity: 0 }, { opacity: 1, duration: 0.01, stagger }, 0.45);
+      typeOn("#label", 0.2, 22);
+      rise("#s1-head", 0.5);
+      rise("#s1-body", 1.3);
+
+      // Scene 2, 4 to 8 s: the claim gives way to the evidence.
+      sink("#s1-head", 4.0);
+      sink("#s1-body", 4.0);
+      rise("#s2-head", 4.25);
+      show("#cap-early", 4.5);
+      tl.to("#bar-early", { scaleX: 1, duration: move * 1.4, ease: MOVE }, 4.6);
+      show("#cap-late", 4.5 + stagger * 3);
+      tl.to("#bar-late", { scaleX: 1, duration: move * 1.4, ease: MOVE }, 4.6 + stagger * 3);
+      show("#val-early", 5.4);
+      show("#val-late", 5.4 + stagger * 3);
+      tl.set("#dim", { autoAlpha: 1 }, 6.1);
+      draw("#dim-line", 6.1);
+      draw("#dim-ticks", 6.1, enter);
+      show("#dim-label", 6.5);
+
+      // Scene 3, 8 to 11.5 s: the gap becomes the answer.
+      sink("#s2-head", 8.0);
+      rise("#s3-head", 8.1);
+      show("#s3-cap", 8.5);
+
+      tl.to({}, { duration: 0.01 }, 11.49); // the film is 11.5 s long
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>
