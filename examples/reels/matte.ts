@@ -73,7 +73,11 @@ export const scene = (ctx: Ctx, B: typeof BLOCKS): Node[] => {
   const cardH = Math.round(ctx.lineHeight("headline") + ctx.lineHeight("label") * 1.6);
   const s5 = B.product({ id: "s5", objects: chair(0), shot: "still", room: roomUnder(cardH), sweep: false, at: END }, ctx);
   out.push(...s5);
-  const card = lineAbove(ctx, anchor(s5, "s5-object-extent"), cardH, gap);
+  // The chair stands on the centre of the frame, so the card does too: a box as wide as the text-safe area allows about
+  // the centre. The text-safe area itself is wider on the left, and a card centred in it sat 36 px left of the chair.
+  const above = lineAbove(ctx, anchor(s5, "s5-object-extent"), cardH, gap);
+  const half = Math.min(ctx.width / 2 - S.left, S.right - ctx.width / 2);
+  const card = { ...above, x: Math.round(ctx.width / 2 - half), w: Math.round(2 * half) };
   const endNodes = B.endCard({ id: "card", name: "Humave", line: "Lounge chair", box: card, place: "middle", enter: "cut", at: END, until: seconds }, ctx);
   out.push(...endNodes);
 

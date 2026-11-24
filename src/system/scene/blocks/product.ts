@@ -7,6 +7,8 @@
 // Rules this block enforces:
 // - One hero object, centred, filling about `fill` of the frame's width at 9:16 (of its height at 16:9),
 //   standing on a soft contact shadow. Colours come from roles; finishes from a fixed set.
+// - Across the frame, a shot that holds the pose ("still", "push") centres what the object draws in perspective (its
+//   body, without the shadow) on its room; a shot that turns the object centres the axis it turns about.
 // - Materials: a real model keeps its own materials by default (`material: "own"`): its maker's finish is what a
 //   real object looks like, and Matte asks for real materials. `material: "system"` maps a model to the system's
 //   roles; use it only to make a model match a drawn film. Forms built from simple geometry (box, sphere, lathe)
@@ -212,6 +214,35 @@ function sightOf(objs: Object3D[], parent: M, at: (k: Key[] | undefined, b: numb
   return { rect: out, area: Math.min(area, out.w * out.h) };
 }
 
+/**
+ * The drawn body of the objects at time t: the left and right edge of what they draw on screen, px, in perspective
+ * (a near part shows wider than a far one). A model with a hull in its table (three/silhouette.ts): its outermost
+ * points. Any other object: its box's corners. The soft contact shadow is not part of it.
+ */
+function bodyOf(objs: Object3D[], parent: M, at: (k: Key[] | undefined, b: number) => number, cam: { pos: Vec3; target: Vec3; fov: number }, box: Rect): { x0: number; x1: number } {
+  const pts: Vec3[] = [];
+  const walk = (list: Object3D[], par: M) => {
+    for (const o of list) {
+      const p: Vec3 = [at(o.tracks?.position?.x, (o.position ?? [0, 0, 0])[0]), at(o.tracks?.position?.y, (o.position ?? [0, 0, 0])[1]), at(o.tracks?.position?.z, (o.position ?? [0, 0, 0])[2])];
+      const r: Vec3 = [at(o.tracks?.rotation?.x, (o.rotation ?? [0, 0, 0])[0]), at(o.tracks?.rotation?.y, (o.rotation ?? [0, 0, 0])[1]), at(o.tracks?.rotation?.z, (o.rotation ?? [0, 0, 0])[2])];
+      const m = mul(par, trs(p, r, at(o.tracks?.scale, o.scale ?? 1)));
+      const g = o.geometry, hull = silhouetteOf(g)?.hull;
+      if (g?.kind === "model" && hull?.length) {
+        // The hull is in fractions of the native box's diagonal; the model is scaled so that box becomes its size.
+        const S = Math.hypot(...g.size);
+        for (let i = 0; i + 2 < hull.length; i += 3) pts.push(apply(m, [hull[i]! * S, hull[i + 1]! * S, hull[i + 2]! * S]));
+      } else if (g) {
+        const [a, b] = boundsOf(g);
+        for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) pts.push(apply(m, [x, y, z]));
+      }
+      walk(o.children ?? [], m);
+    }
+  };
+  walk(objs, parent);
+  const q = project(pts, cam, box);
+  return q.w >= 0 ? { x0: q.x, x1: q.x + q.w } : { x0: box.x + box.w / 2, x1: box.x + box.w / 2 };
+}
+
 /** Notes already said, so a scene built many times (every frame of a preview) says each once. */
 const said = new Set<string>();
 
@@ -260,8 +291,10 @@ export const product: Block<ProductProps> = (p0, ctx) => {
   // The detail the camera moves in on: the scene's, or the block's own when the full view cannot fill the hook.
   let dt: { point: [number, number, number]; span?: number } | undefined = detail ? p.detail : undefined;
   let lower = 0;
+  // The camera's sideways offset, scene units: it stands the object on the horizontal centre of its room (see below).
+  let ax = 0;
   const rig = (d: number) => {
-    let aimY = centre[1] + (cy - 0.5) * 2 * th * d, camY = centre[1] + d * 0.28, aimX = 0, aimZ = centre[2];
+    let aimY = centre[1] + (cy - 0.5) * 2 * th * d, camY = centre[1] + d * 0.28, aimX = ax, aimZ = centre[2];
     // A detail: the camera aims at the part from the distance at which `span` of the object's height fills 80 % of
     // the frame's height, a little above it, as a macro lens would.
     if (dt) {
@@ -382,6 +415,24 @@ export const product: Block<ProductProps> = (p0, ctx) => {
     keepTop();
     detail = true;
     reached = best!.share;
+  }
+  // Across the frame, the object stands on the horizontal centre of its room (of the frame with no room). The camera
+  // moves sideways by one amount for the whole shot, so nothing jumps. A detail aims at its part instead.
+  // - A shot that holds the pose ("still", "push") centres what the object draws (bodyOf), not its box: a turned object
+  //   is not symmetric about its box (binoculars turned 20 degrees drew 36 px left of a centred line at 9:16). The pose
+  //   does not change, so the body stays centred at every moment of the shot.
+  // - A shot that turns the object ("turntable", "orbit", "rise") centres the axis it turns about, so the turn stays even.
+  //   Its outline swings about that axis; no one offset centres it at every moment.
+  if (!detail) {
+    const mid = room ? room.x + room.w / 2 : box.x + box.w / 2, holds = shot === "still" || shot === "push";
+    for (let i = 0; i < 8; i++) {
+      const r = rig(dist), cam = camAt(r, t1);
+      const b = holds ? bodyOf([r.group], ID, atT(t1), cam, box) : null;
+      const off = (b ? (b.x0 + b.x1) / 2 : project([[0, centre[1], 0]], cam, box).x) - mid;
+      if (Math.abs(off) < 0.05) break;
+      // One px on screen is 2 z tan(fov / 2) aspect / width scene units at the object's depth z.
+      ax += (off * 2 * (cam.pos[2] - centre[2]) * th * aspect) / box.w;
+    }
   }
   const { group, camera } = rig(dist);
   // The choice, for the checks and the lint: how it framed, the share it reached at its smallest, the share asked.

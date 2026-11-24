@@ -7,9 +7,9 @@ import { BLOCKS } from "../scene/blocks";
 import { makeCtx } from "../scene/context";
 import { SYSTEMS } from "../systems";
 import { MODELS } from "../media.gen";
-import { gltfBounds, gltfJson } from "./model";
+import { fitModel, gltfBounds, gltfJson } from "./model";
 import { standing } from "./models";
-import { silhouetteOfGlb, viewAt } from "./silhouette";
+import { silhouetteOfGlb, solidTriangles, viewAt } from "./silhouette";
 import { SILHOUETTES } from "./silhouettes.gen";
 
 const ROOT = resolve(import.meta.dir, "../../..");
@@ -97,4 +97,47 @@ test("a detail shot given a box fills the frame: the box is its room, never a cl
   expect(JSON.stringify(withBox)).toBe(JSON.stringify(withRoom));
   const canvas = withBox.find((n) => n.kind === "scene3d") as { box?: { w: number } } | undefined;
   expect(canvas?.box === undefined || canvas.box.w === 1080).toBe(true);
+});
+
+describe("a product shot centres what the model draws", () => {
+  // Before: a turned model in a shot with a fill stood with its box on the centre, and its drawn body did not.
+  // Binoculars turned 20 degrees on the Keynote end card drew 36 px left of the centred name under them.
+  const BINO = "keynote-binocular", file = MODELS[BINO] ? join(ROOT, "assets/media", BINO, MODELS[BINO]!.file) : "";
+  type V3 = [number, number, number];
+  /** The left and right edge of the model's solid triangles on screen, in perspective, as the renderer draws them. */
+  const drawn = (spec: { objects: { rotation?: V3; children?: { position?: V3; rotation?: V3; geometry?: { size: V3 } }[] }[]; camera: { position: V3; target?: V3; fov: number }; box: { x: number; y: number; w: number; h: number } }) => {
+    const bytes = new Uint8Array(readFileSync(file)), tris = solidTriangles(bytes);
+    const group = spec.objects[0]!, o = group.children![0]!;
+    const fit = fitModel(gltfBounds(gltfJson(bytes)), o.geometry!.size);
+    const turnY = (p: V3, deg: number): V3 => { const a = (deg * Math.PI) / 180; return [p[0] * Math.cos(a) + p[2] * Math.sin(a), p[1], -p[0] * Math.sin(a) + p[2] * Math.cos(a)]; };
+    const { position: c, target: t, fov } = spec.camera, box = spec.box;
+    const f = [t![0] - c[0], t![1] - c[1], t![2] - c[2]], fl = Math.hypot(...f);
+    const fw: V3 = [f[0]! / fl, f[1]! / fl, f[2]! / fl], rl = Math.hypot(fw[2], fw[0]), r: V3 = [-fw[2] / rl, 0, fw[0] / rl];
+    const k = Math.tan((fov * Math.PI) / 360) * (box.w / box.h);
+    let x0 = Infinity, x1 = -Infinity;
+    for (let i = 0; i < tris.length; i += 3) {
+      let p: V3 = [tris[i]! * fit.scale + fit.offset[0], tris[i + 1]! * fit.scale + fit.offset[1], tris[i + 2]! * fit.scale + fit.offset[2]];
+      p = turnY(p, o.rotation?.[1] ?? 0);
+      const at = o.position ?? [0, 0, 0];
+      p = turnY([p[0] + at[0], p[1] + at[1], p[2] + at[2]], group.rotation?.[1] ?? 0);
+      const v: V3 = [p[0] - c[0], p[1] - c[1], p[2] - c[2]], z = v[0] * fw[0] + v[1] * fw[1] + v[2] * fw[2];
+      const sx = box.x + (((v[0] * r[0] + v[2] * r[2]) / z / k + 1) / 2) * box.w;
+      x0 = Math.min(x0, sx); x1 = Math.max(x1, sx);
+    }
+    return { x0, x1 };
+  };
+  test.skipIf(!existsSync(file))("a turned model in a still shot with a fill: its drawn body on the room's centre, inside its extent", () => {
+    const ctx = ctxOf("keynote");
+    for (const room of [{ x: 0, y: 220, w: 1080, h: 420 }, { x: 120, y: 220, w: 700, h: 420 }]) for (const turn of [-20, 35]) {
+      const nodes = BLOCKS.product({ id: "p", objects: [standing("bino", BINO, { width: 2.4 }, { rotation: [0, turn, 0] })], shot: "still", fill: 0.5, room, sweep: false, at: 0 }, ctx);
+      const spec = (nodes.find((n) => n.kind === "scene3d") as unknown as { spec: Parameters<typeof drawn>[0] }).spec;
+      const b = drawn(spec), mid = (b.x0 + b.x1) / 2;
+      expect([room.x, turn, Math.abs(mid - (room.x + room.w / 2)) <= 2]).toEqual([room.x, turn, true]);
+      // The extent (where text keeps out) holds the whole body, so a line placed by it does not touch the model.
+      const ext = nodes.find((n) => n.id === "p-object-extent") as unknown as { x: number; w: number };
+      expect([turn, b.x0 >= ext.x - 0.5 && b.x1 <= ext.x + ext.w + 0.5]).toEqual([turn, true]);
+      // The fill keeps its size: the body is about half the frame's width.
+      expect(b.x1 - b.x0).toBeGreaterThan(1080 * 0.5 * 0.75);
+    }
+  });
 });

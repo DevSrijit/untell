@@ -11,6 +11,11 @@
 //   and the silhouette's bounds [u0, u1, v0, v1] as fractions of S from the square's centre (u to the right, v up).
 // - `dense`: the point of the model with the most surface, as fractions [x, y, z] of its native box from the lowest
 //   corner. A detail shot aims there when the full view cannot fill the frame.
+// - `hull`: the model's outermost points: for each of HULL directions, the solid point that reaches farthest that
+//   way, as [x, y, z] fractions of S from the box's centre (a flat list). The edges of the model on screen, in
+//   perspective, from any camera, are the edges of these points within a few thousandths of S. The views cannot
+//   give that: a near part shows wider than a far one, and their bounds change fast between two stored yaws.
+//   The product block centres a shot by them. A table made before the hull has none.
 // - Glass (see-through parts: the renderer draws them almost clear, see render.ts isGlass) does not count.
 //
 // The views use the same camera basis as the product block's projection (right = forward x up, up = right x forward).
@@ -24,8 +29,11 @@ export const YAWS = 24;
 export const PITCHES = [-30, -15, 0, 15, 30, 45, 60];
 const N = 128;
 
+/** How many directions pick the hull's points (spread evenly over the sphere). */
+export const HULL = 512;
+
 /** One model's silhouettes: views[pitch index][yaw index] = [share, u0, u1, v0, v1]. */
-export type Silhouette = { views: number[][][]; dense: Vec3 };
+export type Silhouette = { views: number[][][]; dense: Vec3; hull?: number[] };
 
 type Accessor = { bufferView?: number; byteOffset?: number; componentType: number; count: number; type: string; normalized?: boolean };
 type G = ReturnType<typeof gltfJson> & {
@@ -203,7 +211,36 @@ export function silhouetteOfGlb(bytes: Uint8Array, bounds: { min: Vec3; max: Vec
     }
     if (s > best) { best = s; at = [(x + 0.5) / D, (y + 0.5) / D, (z + 0.5) / D]; }
   }
-  return { views, dense: at };
+  return { views, dense: at, hull: hullOf(tris, centre, S) };
+}
+
+/**
+ * The model's outermost points (see `hull` above): for HULL directions spread evenly over the sphere (a Fibonacci
+ * spiral), the point that reaches farthest along each, without repeats, as fractions of S from the centre.
+ */
+function hullOf(tris: Float32Array, centre: Vec3, S: number): number[] {
+  const best = new Int32Array(HULL).fill(-1), reach = new Float64Array(HULL).fill(-Infinity);
+  const dirs = Array.from({ length: HULL }, (_, i) => {
+    const y = 1 - (2 * (i + 0.5)) / HULL, r = Math.sqrt(1 - y * y), a = i * Math.PI * (3 - Math.sqrt(5));
+    return [r * Math.cos(a), y, r * Math.sin(a)] as Vec3;
+  });
+  for (let k = 0; k < tris.length; k += 3) {
+    const x = tris[k]! - centre[0], y = tris[k + 1]! - centre[1], z = tris[k + 2]! - centre[2];
+    for (let i = 0; i < HULL; i++) {
+      const d = dirs[i]!, v = x * d[0] + y * d[1] + z * d[2];
+      if (v > reach[i]!) { reach[i] = v; best[i] = k; }
+    }
+  }
+  // `|| 0` turns -0 into 0, so the table reads back from its JSON as it was made.
+  const q = (v: number) => Math.round(v * 1e4) / 1e4 || 0;
+  const seen = new Set<string>(), out: number[] = [];
+  for (const k of best) {
+    if (k < 0) continue;
+    const p = [q((tris[k]! - centre[0]) / S), q((tris[k + 1]! - centre[1]) / S), q((tris[k + 2]! - centre[2]) / S)];
+    const key = p.join(",");
+    if (!seen.has(key)) { seen.add(key); out.push(...p); }
+  }
+  return out;
 }
 
 /** One view of a table, between its stored views: [share, u0, u1, v0, v1], bilinear in yaw (round) and pitch. */

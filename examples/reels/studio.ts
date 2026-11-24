@@ -76,9 +76,12 @@ export const scene = (ctx: Ctx, B: typeof BLOCKS): Node[] => {
 
   // Shot 4: the other side of the shoe under the card. The name in display (Studio's end): endCard sets its name in
   // headline and has no role prop, so the card is the lockup it draws, in display, landing on a bar.
-  const L = { id: "card", name: "Bema", line: "Running shoe.", mark: "none" as const, role: "display" as const, x: S.left,
+  // The shoe stands on the centre of the frame, so the card does too: a box as wide as the text-safe area allows about
+  // the centre. The text-safe area itself is wider on the left, and a card centred in it sat 33 px left of the shoe.
+  const half = Math.min(ctx.width / 2 - S.left, S.right - ctx.width / 2);
+  const L = { id: "card", name: "Bema", line: "Running shoe.", mark: "none" as const, role: "display" as const, x: Math.round(ctx.width / 2 - half),
     // The name's glyphs reach past its line box: the card starts that far under the text-safe top.
-    y: S.top + overflow(ctx, "display").top, w, at: LAND };
+    y: S.top + overflow(ctx, "display").top, w: Math.round(2 * half), at: LAND };
   const card = B.lockup(L, ctx);
   const cardBox = B.measure("lockup", L, ctx);
   const room4 = { x: 0, y: Math.round(cardBox.y + cardBox.h + gap), w: ctx.width, h: Math.round(ctx.height * 0.95 - (cardBox.y + cardBox.h + gap)) };
