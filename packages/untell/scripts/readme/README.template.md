@@ -153,4 +153,8 @@ your Python lacks them, `untell listen setup` adds its tools, and `untell media 
 MIT. untell ships no media. Each file you bring keeps its own licence. The fonts in the kit are under the SIL Open
 Font License; their licence files ship with them.
 
+The two frameworks have their own licences, and untell ships neither of them. Remotion is free for individuals and
+for companies of up to 3 people; a larger company needs a Remotion company licence. HyperFrames is under
+Apache-2.0. Read the terms of the framework that you use.
+
 Every picture on this page is output of untell's own tools, run on real films. `bun packages/untell/scripts/readme/build.ts` makes them again.
