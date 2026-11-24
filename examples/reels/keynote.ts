@@ -73,14 +73,16 @@ export const scene = (ctx: Ctx, B: typeof BLOCKS): Node[] => {
 
   // 5. The end: the binoculars small and centred, the name under them in headline, the line in the link blue.
   const cardH = Math.round(ctx.lineHeight("headline") + ctx.lineHeight("body") * 1.4);
-  // The name must end by the low band's right edge below lowBandTop, so the pair sits above it: the binoculars at the
-  // text-safe top, the name under them, clear of the low band.
-  const objRoom = { x: 0, y: S.top, w: ctx.width, h: Math.round(S.lowBandTop - S.top - ctx.lineHeight("headline") - 2 * gap) };
+  // Below lowBandTop a text row must end by the low band's right edge, and the lockup then centres on that narrower
+  // span: its text moves left of the binoculars. So the whole card, the name and the line, stays above lowBandTop:
+  // the binoculars at the text-safe top, the card under them, both on the centre of the frame.
+  // One more body line of room covers the gap that the lockup sets between its name and its line.
+  const objRoom = { x: 0, y: S.top, w: ctx.width, h: Math.round(S.lowBandTop - S.top - cardH - ctx.lineHeight("body") - 2 * gap) };
   const shot5 = B.product({ id: "s5", objects: bino(-20), shot: "still", fill: 0.5, room: objRoom, sweep: false, at: END }, ctx);
   out.push(...shot5);
   const obj = anchor(shot5, "s5-object-extent");
   const card = B.lockup({ id: "card", name: "Zodeno 7x50", line: "Made for the dark.", mark: "none", axis: "column", role: "headline",
-    enter: "cut", lineColor: "accentText", ...centred({ y: obj.y + obj.h + gap, h: cardH }), at: END }, ctx);
+    enter: "cut", lineColor: "accentText", ...centred({ y: Math.min(obj.y + obj.h + gap, Math.floor(S.lowBandTop - cardH) - 2), h: cardH }), at: END }, ctx);
   out.push(...card);
 
   // Sound. The bed is audible from frame 0 and rises into the reveal: its loudest bar is the swell. One low impact
