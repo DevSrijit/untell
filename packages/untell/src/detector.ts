@@ -110,12 +110,15 @@ Fix:      ${x.fix || "-"}`;
 type AudioNode = { id: string; kind: "audio"; src: string; at: number; until?: number; from?: number; volume?: number; fadeIn?: number; fadeOut?: number };
 type Capture = { durationInFrames: number; fps: number; nodes: { kind: string }[] | null };
 
-/** Integrated loudness and true peak by ffmpeg's EBU R128 meter, in the keys the checks read. */
-export function loudnessOf(file: string): { lufsIntegrated: number | null; truePeakDb: number | null } {
-  const r = spawnSync("ffmpeg", ["-nostats", "-i", file, "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8", maxBuffer: 64 << 20 });
+/**
+ * Integrated loudness, true peak and loudness range by ffmpeg's EBU R128 meter, in the keys the checks read.
+ * `soundOnly` skips the picture of a video file (-vn), so the meter does not decode the frames.
+ */
+export function loudnessOf(file: string, soundOnly = false): { lufsIntegrated: number | null; truePeakDb: number | null; loudnessRange: number | null } {
+  const r = spawnSync("ffmpeg", ["-nostats", "-i", file, ...(soundOnly ? ["-vn"] : []), "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8", maxBuffer: 64 << 20 });
   const tail = (r.stderr ?? "").slice((r.stderr ?? "").lastIndexOf("Summary:"));
   const get = (k: string) => { const m = tail.match(new RegExp(`${k}:\\s+(-?[\\d.]+|-inf)`)); return m && m[1] !== "-inf" ? Number(m[1]) : null; };
-  return { lufsIntegrated: get("I"), truePeakDb: get("Peak") };
+  return { lufsIntegrated: get("I"), truePeakDb: get("Peak"), loudnessRange: get("LRA") };
 }
 
 /**

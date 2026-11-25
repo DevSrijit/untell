@@ -2,6 +2,7 @@
 
 Usage: python3 scripts/review_sheet.py <video.mp4> [--out sheet.jpg] [--step 0.5] [--beats beats.json]
                                        [--findings findings.json] [--cols 8] [--align align.json] [--theme dark|light]
+                                       [--tw 216] [--per-page N] [--no-phone] [--measures measures.json]
 
 A model cannot watch a video. It can read this: every row is a strip of time.
   - Frames every `step` seconds, each with its time. A frame that follows a cut has a red top edge. A cut is a change
@@ -17,11 +18,15 @@ A model cannot watch a video. It can read this: every row is a strip of time.
     strip of crops from the full-size frames, zoomed 5x, so a model can read a 3 px error.
 It also writes <out>.json: the cuts, stalls (no change for over 1 s), loudness per second and the beat grid,
 so the numbers behind the picture are exact; and <out stem>.phone.jpg, the phone sheet: a frame from each shot at
-390 px wide, the size a phone shows it, for the phone pass of the critique.
+390 px wide, the size a phone shows it, for the phone pass of the critique (--no-phone leaves it out).
+Pages (untell see): --per-page N writes the sheet as pages of N frames, <out stem>-1.jpg, -2.jpg and on, each with
+its own header and lanes; --tw sets the width of a frame in px. --measures takes the motion, the cuts and the sound
+that untell see measured (one decode of the file), and --thumbs the frames it shows, so the sheet decodes nothing.
 """
 import argparse
 import json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -37,44 +42,59 @@ ap.add_argument("--cols", type=int, default=8)
 ap.add_argument("--align")
 ap.add_argument("--theme", choices=["dark", "light"], default="dark")
 ap.add_argument("--capture", help="the detector's capture.json: thin changes (a label that types, a line that draws) count as motion")
+ap.add_argument("--tw", type=int, default=216, help="the width of a frame on the sheet, px")
+ap.add_argument("--per-page", type=int, default=0, help="frames on a page: the sheet is written as pages (<out stem>-<k>.jpg)")
+ap.add_argument("--no-phone", action="store_true", help="no phone sheet")
+ap.add_argument("--measures", help="the motion, cuts and sound of the file, measured before (untell see)")
+ap.add_argument("--thumbs", help="a folder of the frames at the sheet's size, t0000.png at 0 s and one each --step (untell see)")
 a = ap.parse_args()
 video = Path(a.video)
 out = Path(a.out) if a.out else video.with_suffix(".sheet.jpg")
 
 
 def probe():
-    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height,r_frame_rate:format=duration",
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height,r_frame_rate:stream_side_data=rotation:format=duration",
                         "-of", "json", str(video)], capture_output=True, text=True, check=True)
     d = json.loads(r.stdout)
     v = next(s for s in d["streams"] if s["codec_type"] == "video")
     n, m = (int(x) for x in v["r_frame_rate"].split("/"))
-    return v["width"], v["height"], n / m, float(d["format"]["duration"]), any(s["codec_type"] == "audio" for s in d["streams"])
+    # A phone clip carries a rotation: ffmpeg turns its frames when it decodes them, so the size turns too.
+    turned = any(abs(int(float(s.get("rotation", 0)))) % 180 == 90 for s in v.get("side_data_list", []))
+    w, h = (v["height"], v["width"]) if turned else (v["width"], v["height"])
+    return w, h, n / m, float(d["format"]["duration"]), any(s["codec_type"] == "audio" for s in d["streams"])
 
 
 W, H, fps, dur, has_audio = probe()
-# Small frames for the motion line (every frame), read once.
-SW = 96
-SH = max(2, round(SW * H / W / 2) * 2)
-raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-vf", f"scale={SW}:{SH}", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
-                     capture_output=True, check=True).stdout
-small = np.frombuffer(raw, dtype=np.uint8).reshape(-1, SH, SW).astype(np.int16)
-n_frames = len(small)
-dur = min(dur, n_frames / fps)  # the picture's length: the sound may run a frame longer
-diff = np.zeros(n_frames)
-diff[1:] = np.abs(small[1:] - small[:-1]).mean(axis=(1, 2))
-changed = np.zeros(n_frames)
-changed[1:] = (np.abs(small[1:] - small[:-1]) > 24).mean(axis=(1, 2))
-# A cut: the one cut function of the detector (scripts/inspect/checks/cuts.py): a whole-frame change that is a spike,
-# or a shot change of a subject on one ground (a 3D object on a dark plate), read by region.
 import sys  # noqa: E402
-sys.path.insert(0, str(Path(__file__).resolve().parent / "inspect" / "checks"))
-from cuts import cut_frames  # noqa: E402
-# On the detector's own copy (1/5 of the frame, film.py SMALL): at the sheet's 96 px a headline that cuts to the next
-# one is a few pixels, and the sheet said "0 cuts" where the detector found the cut at 8.03 s (an agent's Graphite film).
-_cw, _ch = max(2, W // 5 // 2 * 2), max(2, H // 5 // 2 * 2)
-_raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-vf", f"scale={_cw}:{_ch}:flags=bilinear", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
-                      capture_output=True, check=True).stdout
-cuts = cut_frames(np.frombuffer(_raw, dtype=np.uint8).reshape(-1, _ch, _cw).astype(np.int16))
+measured = json.loads(Path(a.measures).read_text()) if a.measures else None
+if measured:
+    # untell see measured the file in one decode: the motion of every frame and the cuts, at its own frame rate (afps).
+    afps = float(measured["fps"])
+    diff = np.array(measured["motion"], dtype=float)
+    n_frames = len(diff)
+    cuts = list(measured["cuts"])
+else:
+    afps = fps  # the rate of the motion line and the cuts: every frame of the file
+    # Small frames for the motion line (every frame), read once.
+    SW = 96
+    SH = max(2, round(SW * H / W / 2) * 2)
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-vf", f"scale={SW}:{SH}", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+                         capture_output=True, check=True).stdout
+    small = np.frombuffer(raw, dtype=np.uint8).reshape(-1, SH, SW).astype(np.int16)
+    n_frames = len(small)
+    diff = np.zeros(n_frames)
+    diff[1:] = np.abs(small[1:] - small[:-1]).mean(axis=(1, 2))
+    # A cut: the one cut function of the detector (scripts/inspect/checks/cuts.py): a whole-frame change that is a spike,
+    # or a shot change of a subject on one ground (a 3D object on a dark plate), read by region.
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "inspect" / "checks"))
+    from cuts import cut_frames  # noqa: E402
+    # On the detector's own copy (1/5 of the frame, film.py SMALL): at the sheet's 96 px a headline that cuts to the next
+    # one is a few pixels, and the sheet said "0 cuts" where the detector found the cut at 8.03 s (an agent's Graphite film).
+    _cw, _ch = max(2, W // 5 // 2 * 2), max(2, H // 5 // 2 * 2)
+    _raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-vf", f"scale={_cw}:{_ch}:flags=bilinear", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+                          capture_output=True, check=True).stdout
+    cuts = cut_frames(np.frombuffer(_raw, dtype=np.uint8).reshape(-1, _ch, _cw).astype(np.int16))
+dur = min(dur, n_frames / afps)  # the picture's length: the sound may run a frame longer
 # A stall: no visible change for over a second.
 still = diff < 0.15
 # The one motion measure (scripts/inspect/checks/motion_measure.py): with the film's capture, a frame where a label
@@ -89,15 +109,22 @@ for i in range(n_frames + 1):
     if i < n_frames and still[i]:
         start = i if start is None else start
     else:
-        if start is not None and (i - start) / fps > 1.0:
-            stalls.append([round(start / fps, 2), round(i / fps, 2)])
+        if start is not None and (i - start) / afps > 1.0:
+            stalls.append([round(start / afps, 2), round(i / afps, 2)])
         start = None
+if measured and "stalls" in measured:
+    stalls = [list(x) for x in measured["stalls"]]  # the stall rule's own measure, from untell see
 
 # Sound: an envelope for the waveform, loudness per second, onsets when no beat grid is given.
 env = np.zeros(1)
 per_second = []
 onsets = []
-if has_audio:
+if has_audio and measured and measured.get("env") is not None:
+    # untell see measured the sound: the 10 ms level and the onsets, by the method below.
+    env = np.array(measured["env"], dtype=float)
+    onsets = list(measured.get("onsets") or [])
+    per_second = [round(float(10 * np.log10((env[s * 100:(s + 1) * 100] ** 2).mean() + 1e-12)), 1) for s in range(len(env) // 100)]
+elif has_audio:
     pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-ac", "1", "-ar", "8000", "-f", "s16le", "-"], capture_output=True, check=True).stdout
     x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768
     hop = 80  # 10 ms
@@ -211,7 +238,7 @@ F_TITLE, F_FACT, F_LABEL, F_TIME, F_TAG = font("bold", s(20)), font("mono", s(12
 
 # Layout, in px of the final sheet. The frames keep their old size, so a model reads the same detail.
 COLS = a.cols
-TW = 216
+TW = a.tw
 TH = round(TW * H / W)
 GUT = 9 * U           # the label column left of the lanes
 PAD = 2 * U
@@ -219,7 +246,7 @@ LANES = [("motion", 4 * U), ("sound", 5 * U), ("faults", 0)]
 times = [round(i * a.step, 3) for i in range(int(dur / a.step) + 1) if i * a.step < dur - 1e-6]
 rows = (len(times) + COLS - 1) // COLS
 RW = COLS * TW
-cut_times = [c / fps for c in cuts]
+cut_times = [c / afps for c in cuts]
 
 
 MAX_FAULT_LANES = 8
@@ -257,30 +284,8 @@ def lanes_for(t0, t1):
     return placed
 
 
-row_faults = [lanes_for(ri * COLS * a.step, (ri + 1) * COLS * a.step) for ri in range(rows)]
 FAULT_LANE = 3 * U
-
-
-def track_h(ri):
-    n = max([p[2] for p in row_faults[ri]], default=-1) + 1
-    return LANES[0][1] + LANES[1][1] + (max(1, n) * FAULT_LANE if findings else 0) + 2 * U
-
-
-# The header: the film's facts, then the findings that have no time.
-NOTE_H = 2 * U + 18 * len(note_lines) if note_lines else 0
-HEAD = 9 * U + NOTE_H
-row_y = []
-y = PAD + HEAD
-for ri in range(rows):
-    row_y.append(y)
-    y += TH + track_h(ri) + 3 * U
-ZOOM, CROP_W, CROP_H = 5, 76, 44
-STRIP_ROW = CROP_H * ZOOM + 5 * U
-PER_ROW = max(1, int(RW // (CROP_W * ZOOM + 2 * U)))
-strip_y = y
-total_h = y + (U * 4 + STRIP_ROW * ((len(worst) + PER_ROW - 1) // PER_ROW) if worst else 0) + 4 * U
-sheet = Image.new("RGB", (s(GUT + RW + 2 * PAD), s(total_h)), C["bg"])
-d = ImageDraw.Draw(sheet)
+d = None
 
 
 def text(xy, t, f, fill, anchor="la"):
@@ -297,45 +302,7 @@ def tw(t, f):
 # beat or onset.
 change_starts = [i for i in range(1, n_frames) if not still[i] and still[i - 1]]
 marks = beats or onsets
-on_mark = sum(1 for i in change_starts if any(abs(i / fps - m) <= 2 / fps for m in marks))
-
-# Header.
-text((PAD, PAD), video.name, F_TITLE, C["ink"])
-facts = [f"{dur:.2f} s", f"{W} × {H}", f"{fps:g} fps", f"{len(cuts)} cut{'s' if len(cuts) != 1 else ''}",
-         f"{len(change_starts)} picture change{'s' if len(change_starts) != 1 else ''}"
-         + ((f", {on_mark} on {an(grid_kind)}" if beats else f", {on_mark} near an onset heard in the file") if has_audio and marks and not judged_cuts and not bed_cuts else ""),
-         *([f"{judged_cuts[0]} of {judged_cuts[1]} cuts on {an(grid_kind)} (the check)"] if judged_cuts and has_audio else []),
-         # Without the capture, a label that fades in or a line that draws is too thin for the pixel measure: the count
-         # says so, since the stall check counts those changes (the hoist's sheet showed 4 stalls where the check found 0).
-         f"{len(stalls)} stall{'s' if len(stalls) != 1 else ''}" + ("" if a.capture else " (pixels only: no --capture)"), (f"sound: {'the check' + chr(39) + 's ' if judged_cuts else ''}{grid_kind}s marked" if has_audio else "no sound")]
-errs = sum(1 for f in findings + notes if f.get("severity") == "error")
-# Advice is not a warning (the check says "2 warnings, 1 advice"; the sheet said "3 warnings").
-warns = sum(1 for f in findings + notes if f.get("severity") == "warning")
-advs = sum(1 for f in findings + notes if f.get("severity") == "advice")
-if a.findings:
-    facts.append(f"{errs} error{'s' if errs != 1 else ''} · {warns} warning{'s' if warns != 1 else ''}" + (f" · {advs} advice" if advs else ""))
-text((PAD, PAD + 4 * U), "   ·   ".join(facts), F_FACT, C["muted"])
-# The key, right-aligned on the title line: each mark with its name. On the facts line, a long line of facts ran
-# under it (the check's grid and count made it longer).
-KY = PAD + U
-kx = PAD + GUT + RW
-# The cut's label says what counts (checks/cuts.py): a change done in one frame. A word that rolls, pops or grows in over
-# several frames is a change on the beat, not a cut, so a film can show fewer cuts than it has beat changes.
-for label, kind in reversed([("cut: a change done in one frame", "cut"), (grid_kind, "tick"), ("x error", "error"), ("! warning", "warn")]):
-    kx -= tw(label, F_LABEL)
-    text((kx, KY), label, F_LABEL, C["muted"])
-    kx -= U
-    if kind == "cut":
-        d.rectangle([s(kx - 2), s(KY), s(kx), s(KY + 12)], fill=C["ink"])
-    elif kind == "tick":
-        d.rectangle([s(kx - 1), s(KY + 3), s(kx), s(KY + 12)], fill=C["accent"] if beats else C["faint"])
-    else:
-        d.rectangle([s(kx - 14), s(KY + 5), s(kx), s(KY + 9)], fill=C[kind])
-        kx -= 14
-    kx -= 2 * U
-for k, line in enumerate(note_lines):
-    text((PAD, PAD + 7 * U + 18 * k), line, F_FACT, C["error"] if line.startswith("x") else C["warn"] if line.startswith("!") else C["muted"])
-
+on_mark = sum(1 for i in change_starts if any(abs(i / afps - m) <= 2 / afps for m in marks))
 
 def grab(t, w_, h_, scale=None):
     """The frame shown at t, w_ x h_ RGB. ffmpeg gives nothing (and exits 0) for a time past the last frame's start:
@@ -350,182 +317,290 @@ def grab(t, w_, h_, scale=None):
     sys.exit(f"review sheet: no frame at {t:.3f} s in {video} ({dur:.3f} s, {fps:g} fps): {r.stderr.decode(errors='replace').strip()[:200] or 'ffmpeg gave no picture'}")
 
 
+THUMBS = {}
+
+
 def frame_at(t):
-    return grab(t, s(TW), s(TH), scale=True)
-
-
-for ri in range(rows):
-    y0 = row_y[ri]
-    x0r = PAD + GUT
-    t0, t1 = ri * COLS * a.step, (ri + 1) * COLS * a.step
-    # Frames, each with its time; a frame that follows a cut says so in its tag.
-    for ci in range(COLS):
-        k = ri * COLS + ci
-        if k >= len(times):
-            break
-        t = times[k]
-        x = x0r + ci * TW
-        sheet.paste(frame_at(t), (s(x), s(y0)))
-        sx, sy = TW / W, TH / H
-        if guides:  # the scene's guides, thin and quiet
-            for gl in guides.get("x", []):
-                d.line([(s(x + gl["v"] * sx), s(y0)), (s(x + gl["v"] * sx), s(y0 + TH))], fill=C["accent"], width=1)
-            for gl in guides.get("y", []):
-                d.line([(s(x), s(y0 + gl["v"] * sy)), (s(x + TW), s(y0 + gl["v"] * sy))], fill=C["accent"], width=1)
-        now = [i for i in align if i["t0"] - 1e-6 <= t <= i["t1"] + 1e-6]
-        labelled = {id(i) for i in sorted(now, key=lambda i: -abs(i["off"]))[:2]}
-        for i in now:  # each alignment miss that holds now: the line to join, where it is; the two largest with their offset
-            eb, tb = i["elBox"], i.get("targetBox") or i["elBox"]
-            if i["axis"] == "y":
-                xa, xb = min(eb["x0"], tb["x0"]), max(eb["x1"], tb["x1"])
-                d.line([(s(x + xa * sx), s(y0 + i["to"] * sy)), (s(x + xb * sx), s(y0 + i["to"] * sy))], fill=C["accent"], width=S)
-                d.line([(s(x + eb["x0"] * sx), s(y0 + i["v"] * sy)), (s(x + eb["x1"] * sx), s(y0 + i["v"] * sy))], fill=C["error"], width=S)
-                if id(i) in labelled:
-                    lab = f"{i['off']:+.0f} px"
-                    text((min(x + eb["x1"] * sx + 2, x + TW - tw(lab, F_TAG) - 2), y0 + i["v"] * sy - 6), lab, F_TAG, C["error"])
-            else:
-                ya, yb = min(eb["y0"], tb["y0"]), max(eb["y1"], tb["y1"])
-                d.line([(s(x + i["to"] * sx), s(y0 + ya * sy)), (s(x + i["to"] * sx), s(y0 + yb * sy))], fill=C["accent"], width=S)
-                d.line([(s(x + i["v"] * sx), s(y0 + eb["y0"] * sy)), (s(x + i["v"] * sx), s(y0 + eb["y1"] * sy))], fill=C["error"], width=S)
-                if id(i) in labelled:
-                    lab = f"{i['off']:+.0f} px"
-                    text((min(x + i["v"] * sx + 2, x + TW - tw(lab, F_TAG) - 2), y0 + eb["y1"] * sy), lab, F_TAG, C["error"])
-        d.rectangle([s(x), s(y0), s(x + TW) - 1, s(y0 + TH) - 1], outline=C["bg"], width=S)
-        cut_here = [c for c in cut_times if t - a.step < c <= t]
-        after_cut = bool(cut_here)
-        # The cut's own time: a frame at 6.5 s after a cut at 6.03 s said "6.5 s  cut" (a first-use test).
-        c0 = cut_here[-1] if cut_here else None
-        tag = f"{t:.1f} s" + (("  cut" if t - c0 < 1.5 / fps else f"  cut at {c0:.2f}") if after_cut else "")
-        d.rounded_rectangle([s(x + 6), s(y0 + 6), s(x + 6 + tw(tag, F_TIME) + 10), s(y0 + 24)], radius=s(3), fill=C["tagbg"])
-        text((x + 11, y0 + 15), tag, F_TIME, C["ink"], anchor="lm")
-        if after_cut:
-            d.rectangle([s(x), s(y0), s(x + TW), s(y0 + 3)], fill=C["ink"])
-    # The lanes under the row: time runs from t0 to t1 across the row, as the frames above.
-    ty = y0 + TH + U
-    th = track_h(ri) - U
-    d.rectangle([s(x0r), s(ty), s(x0r + RW), s(ty + th)], fill=C["panel"])
-    px = lambda t: x0r + (t - t0) / (t1 - t0) * RW  # noqa: E731
-    for ci in range(COLS + 1):  # the time grid: one line at each frame's time
-        d.line([(s(x0r + ci * TW), s(ty)), (s(x0r + ci * TW), s(ty + th))], fill=C["grid"], width=1)
-    ly = ty
-    # Motion: how much the picture changes, frame to frame. Flat for over a second is a stall.
-    mh = LANES[0][1]
-    text((PAD, ly + mh / 2), "motion", F_LABEL, C["muted"], anchor="lm")
-    f0, f1 = int(t0 * fps), min(n_frames, int(t1 * fps))
-    top = max(1.0, float(np.percentile(diff, 99)))
-    base = ly + mh - 6
-    pts = [(s(px(i / fps)), s(base - min(1, diff[i] / top) * (mh - 12))) for i in range(f0, f1)]
-    if len(pts) > 1:
-        d.line(pts, fill=C["ink"], width=S, joint="curve")
-    for s0, s1 in stalls:
-        if s1 > t0 and s0 < t1:
-            xa, xb = px(max(s0, t0)), px(min(s1, t1))
-            d.rectangle([s(xa), s(base + 2), s(xb), s(base + 4)], fill=C["muted"])
-            lab = f"still {s1 - s0:.1f} s"
-            text((min(xa + 4, x0r + RW - tw(lab, F_TAG) - 4), ly + 4), lab, F_TAG, C["muted"])
-    ly += mh
-    d.line([(s(x0r), s(ly)), (s(x0r + RW), s(ly))], fill=C["grid"], width=1)
-    # Sound: the waveform, mirrored, with the beats (or onsets) as ticks.
-    sh = LANES[1][1]
-    text((PAD, ly + sh / 2), "sound", F_LABEL, C["muted"], anchor="lm")
-    if has_audio and len(env) > 1:
-        mid = ly + sh / 2
-        e0, e1 = int(t0 * 100), min(len(env), int(t1 * 100))
-        peak = max(1e-4, float(env.max()))
-        for i in range(e0, e1):
-            hgt = env[i] / peak * (sh / 2 - 5)
-            xx = s(px(i / 100))
-            d.line([(xx, s(mid - hgt)), (xx, s(mid + hgt))], fill=C["wave"], width=1)
-        for b in (beats or onsets):
-            if t0 <= b < t1:
-                d.line([(s(px(b)), s(ly + 2)), (s(px(b)), s(ly + 11))], fill=C["accent"] if beats else C["muted"], width=S)
-    else:
-        text((x0r + U, ly + sh / 2), "no sound", F_TAG, C["faint"], anchor="lm")
-    ly += sh
-    # Faults: one bar over the time each covers, with its symbol and rule id, packed so labels never overlap.
-    if findings:
-        d.line([(s(x0r), s(ly)), (s(x0r + RW), s(ly))], fill=C["grid"], width=1)
-        n = max([p[2] for p in row_faults[ri]], default=-1) + 1
-        text((PAD, ly + max(1, n) * FAULT_LANE / 2), "faults", F_LABEL, C["muted"], anchor="lm")
-        if not row_faults[ri]:
-            text((x0r + U, ly + FAULT_LANE / 2), "none in this row", F_TAG, C["faint"], anchor="lm")
-        for bars, sev, lane, label in row_faults[ri]:
-            col = C["error"] if sev == "error" else C["warn"] if sev else C["muted"]
-            yy = ly + lane * FAULT_LANE + 6
-            for xa, xb in bars:
-                d.rectangle([s(x0r + xa), s(yy + 12), s(x0r + xb), s(yy + 15)], fill=col)
-            text((x0r + (bars[0][0] if bars and bars[0][0] < RW - 200 else 0) + 1, yy), label, F_TAG, col)
-    # Cuts: a line through every lane at the cut's time.
-    for c in cut_times:
-        if t0 <= c < t1:
-            d.line([(s(px(c)), s(ty)), (s(px(c)), s(ty + th))], fill=C["ink"], width=S)
+    return THUMBS[t] if t in THUMBS else grab(t, s(TW), s(TH), scale=True)
 
 
 def full_frame(t):
     return grab(t, W, H)
 
 
-# The worst alignment misses: crops of the full-size frame, zoomed 5x, with the line to join and where it is.
-if worst:
-    text((PAD, strip_y + U), "worst alignment misses, 5x", F_LABEL, C["muted"])
-for k, i in enumerate(worst):
-    eb, tb = i["elBox"], i.get("targetBox") or i["elBox"]
-    if i["axis"] == "y":
-        cx = (eb["x1"] + tb["x0"]) / 2 if tb["x0"] >= eb["x1"] else (eb["x0"] + tb["x1"]) / 2 if tb["x1"] <= eb["x0"] else (eb["x0"] + eb["x1"]) / 2
-        cy = (i["v"] + i["to"]) / 2
-    else:
-        cy = (eb["y1"] + tb["y0"]) / 2 if tb["y0"] >= eb["y1"] else (eb["y0"] + tb["y1"]) / 2 if tb["y1"] <= eb["y0"] else (eb["y0"] + eb["y1"]) / 2
-        cx = (i["v"] + i["to"]) / 2
-    box = (int(cx - CROP_W / 2), int(cy - CROP_H / 2), int(cx + CROP_W / 2), int(cy + CROP_H / 2))
-    box = (max(0, box[0]), max(0, box[1]), min(W, box[2]), min(H, box[3]))
-    if box[2] <= box[0] or box[3] <= box[1]:  # the miss lies outside the frame: nothing to zoom
-        continue
-    Z = ZOOM * S
-    crop = full_frame(i["at"]).crop(box).resize(((box[2] - box[0]) * Z, (box[3] - box[1]) * Z), Image.NEAREST)
-    cd = ImageDraw.Draw(crop)
-    if i["axis"] == "y":
-        cd.line([(0, (i["to"] - box[1]) * Z), (crop.width, (i["to"] - box[1]) * Z)], fill=C["accent"], width=2 * S)
-        cd.line([(0, (i["v"] - box[1]) * Z), (crop.width, (i["v"] - box[1]) * Z)], fill=C["error"], width=2 * S)
-    else:
-        cd.line([((i["to"] - box[0]) * Z, 0), ((i["to"] - box[0]) * Z, crop.height)], fill=C["accent"], width=2 * S)
-        cd.line([((i["v"] - box[0]) * Z, 0), ((i["v"] - box[0]) * Z, crop.height)], fill=C["error"], width=2 * S)
-    xx = PAD + GUT + (k % PER_ROW) * (CROP_W * ZOOM + 2 * U)
-    yy = strip_y + 4 * U + (k // PER_ROW) * STRIP_ROW
-    text((xx, yy), f"x {i['kind']}  {i['el']}  {i['off']:+.1f} px  at {i['at']:.1f} s" + (f"  snap {i['fix']}" if i.get("fix") else ""), F_TAG, C["error"])
-    sheet.paste(crop, (s(xx), s(yy + 2 * U)))
+facts = [f"{dur:.2f} s", f"{W} × {H}", f"{fps:g} fps", f"{len(cuts)} cut{'s' if len(cuts) != 1 else ''}",
+         f"{len(change_starts)} picture change{'s' if len(change_starts) != 1 else ''}"
+         + ((f", {on_mark} on {an(grid_kind)}" if beats else f", {on_mark} near an onset heard in the file") if has_audio and marks and not judged_cuts and not bed_cuts else ""),
+         *([f"{judged_cuts[0]} of {judged_cuts[1]} cuts on {an(grid_kind)} (the check)"] if judged_cuts and has_audio else []),
+         # Without the capture, a label that fades in or a line that draws is too thin for the pixel measure: the count
+         # says so, since the stall check counts those changes (the hoist's sheet showed 4 stalls where the check found 0).
+         f"{len(stalls)} stall{'s' if len(stalls) != 1 else ''}" + ("" if a.capture else " (pixels only: no --capture)"), (f"sound: {'the check' + chr(39) + 's ' if judged_cuts else ''}{grid_kind}s marked" if has_audio else "no sound")]
+errs = sum(1 for f in findings + notes if f.get("severity") == "error")
+# Advice is not a warning (the check says "2 warnings, 1 advice"; the sheet said "3 warnings").
+warns = sum(1 for f in findings + notes if f.get("severity") == "warning")
+advs = sum(1 for f in findings + notes if f.get("severity") == "advice")
+if a.findings:
+    facts.append(f"{errs} error{'s' if errs != 1 else ''} · {warns} warning{'s' if warns != 1 else ''}" + (f" · {advs} advice" if advs else ""))
+# The facts on one line, or on two when one line is wider than the sheet (a page of few columns).
+FACT_LINES = ["   ·   ".join(facts)]
+if tw("   ·   ".join(facts), F_FACT) > GUT + RW - U:
+    half = next((k for k in range(1, len(facts)) if tw("   ·   ".join(facts[:k + 1]), F_FACT) > GUT + RW - U), len(facts) - 1)
+    FACT_LINES = ["   ·   ".join(facts[:half]), "   ·   ".join(facts[half:])]
 
-sheet = sheet.resize((sheet.width // S, sheet.height // S), Image.LANCZOS)
 
-sheet.save(out, quality=88)
+def draw_page(times, page_out, page_label=None, first=True):
+    """Draws the frames at `times` (a run of the step grid) with their lanes, and saves the sheet as page_out."""
+    rows = (len(times) + COLS - 1) // COLS
+    T0 = times[0] if times else 0.0
+    row_faults = [lanes_for(T0 + ri * COLS * a.step, T0 + (ri + 1) * COLS * a.step) for ri in range(rows)]
+    def track_h(ri, row_faults=row_faults):
+        n = max([p[2] for p in row_faults[ri]], default=-1) + 1
+        return LANES[0][1] + LANES[1][1] + (max(1, n) * FAULT_LANE if findings else 0) + 2 * U
+
+
+    # The header: the film's facts, then the findings that have no time.
+    NOTE_H = 2 * U + 18 * len(note_lines) if note_lines else 0
+    HEAD = 9 * U + NOTE_H + 18 * (len(FACT_LINES) - 1)
+    row_y = []
+    y = PAD + HEAD
+    for ri in range(rows):
+        row_y.append(y)
+        y += TH + track_h(ri) + 3 * U
+    ZOOM, CROP_W, CROP_H = 5, 76, 44
+    STRIP_ROW = CROP_H * ZOOM + 5 * U
+    PER_ROW = max(1, int(RW // (CROP_W * ZOOM + 2 * U)))
+    strip_y = y
+    total_h = y + (U * 4 + STRIP_ROW * ((len(worst) + PER_ROW - 1) // PER_ROW) if worst and first else 0) + 4 * U
+    global d
+    sheet = Image.new("RGB", (s(GUT + RW + 2 * PAD), s(total_h)), C["bg"])
+    d = ImageDraw.Draw(sheet)
+
+
+    # Header.
+    text((PAD, PAD), video.name + (f"   page {page_label}" if page_label else ""), F_TITLE, C["ink"])
+    for k, line in enumerate(FACT_LINES):
+        text((PAD, PAD + 4 * U + 18 * k), line, F_FACT, C["muted"])
+    # The key, right-aligned on the title line: each mark with its name. On the facts line, a long line of facts ran
+    # under it (the check's grid and count made it longer).
+    KY = PAD + U
+    kx = PAD + GUT + RW
+    # The cut's label says what counts (checks/cuts.py): a change done in one frame. A word that rolls, pops or grows in over
+    # several frames is a change on the beat, not a cut, so a film can show fewer cuts than it has beat changes.
+    for label, kind in reversed([("cut: a change done in one frame", "cut"), (grid_kind, "tick"), ("x error", "error"), ("! warning", "warn")]):
+        kx -= tw(label, F_LABEL)
+        text((kx, KY), label, F_LABEL, C["muted"])
+        kx -= U
+        if kind == "cut":
+            d.rectangle([s(kx - 2), s(KY), s(kx), s(KY + 12)], fill=C["ink"])
+        elif kind == "tick":
+            d.rectangle([s(kx - 1), s(KY + 3), s(kx), s(KY + 12)], fill=C["accent"] if beats else C["faint"])
+        else:
+            d.rectangle([s(kx - 14), s(KY + 5), s(kx), s(KY + 9)], fill=C[kind])
+            kx -= 14
+        kx -= 2 * U
+    for k, line in enumerate(note_lines):
+        text((PAD, PAD + 7 * U + 18 * (k + len(FACT_LINES) - 1)), line, F_FACT, C["error"] if line.startswith("x") else C["warn"] if line.startswith("!") else C["muted"])
+
+
+    for ri in range(rows):
+        y0 = row_y[ri]
+        x0r = PAD + GUT
+        t0, t1 = T0 + ri * COLS * a.step, T0 + (ri + 1) * COLS * a.step
+        # Frames, each with its time; a frame that follows a cut says so in its tag.
+        for ci in range(COLS):
+            k = ri * COLS + ci
+            if k >= len(times):
+                break
+            t = times[k]
+            x = x0r + ci * TW
+            sheet.paste(frame_at(t), (s(x), s(y0)))
+            sx, sy = TW / W, TH / H
+            if guides:  # the scene's guides, thin and quiet
+                for gl in guides.get("x", []):
+                    d.line([(s(x + gl["v"] * sx), s(y0)), (s(x + gl["v"] * sx), s(y0 + TH))], fill=C["accent"], width=1)
+                for gl in guides.get("y", []):
+                    d.line([(s(x), s(y0 + gl["v"] * sy)), (s(x + TW), s(y0 + gl["v"] * sy))], fill=C["accent"], width=1)
+            now = [i for i in align if i["t0"] - 1e-6 <= t <= i["t1"] + 1e-6]
+            labelled = {id(i) for i in sorted(now, key=lambda i: -abs(i["off"]))[:2]}
+            for i in now:  # each alignment miss that holds now: the line to join, where it is; the two largest with their offset
+                eb, tb = i["elBox"], i.get("targetBox") or i["elBox"]
+                if i["axis"] == "y":
+                    xa, xb = min(eb["x0"], tb["x0"]), max(eb["x1"], tb["x1"])
+                    d.line([(s(x + xa * sx), s(y0 + i["to"] * sy)), (s(x + xb * sx), s(y0 + i["to"] * sy))], fill=C["accent"], width=S)
+                    d.line([(s(x + eb["x0"] * sx), s(y0 + i["v"] * sy)), (s(x + eb["x1"] * sx), s(y0 + i["v"] * sy))], fill=C["error"], width=S)
+                    if id(i) in labelled:
+                        lab = f"{i['off']:+.0f} px"
+                        text((min(x + eb["x1"] * sx + 2, x + TW - tw(lab, F_TAG) - 2), y0 + i["v"] * sy - 6), lab, F_TAG, C["error"])
+                else:
+                    ya, yb = min(eb["y0"], tb["y0"]), max(eb["y1"], tb["y1"])
+                    d.line([(s(x + i["to"] * sx), s(y0 + ya * sy)), (s(x + i["to"] * sx), s(y0 + yb * sy))], fill=C["accent"], width=S)
+                    d.line([(s(x + i["v"] * sx), s(y0 + eb["y0"] * sy)), (s(x + i["v"] * sx), s(y0 + eb["y1"] * sy))], fill=C["error"], width=S)
+                    if id(i) in labelled:
+                        lab = f"{i['off']:+.0f} px"
+                        text((min(x + i["v"] * sx + 2, x + TW - tw(lab, F_TAG) - 2), y0 + eb["y1"] * sy), lab, F_TAG, C["error"])
+            d.rectangle([s(x), s(y0), s(x + TW) - 1, s(y0 + TH) - 1], outline=C["bg"], width=S)
+            cut_here = [c for c in cut_times if t - a.step < c <= t]
+            after_cut = bool(cut_here)
+            # The cut's own time: a frame at 6.5 s after a cut at 6.03 s said "6.5 s  cut" (a first-use test).
+            c0 = cut_here[-1] if cut_here else None
+            tag = f"{t:.1f} s" + (("  cut" if t - c0 < 1.5 / afps else f"  cut at {c0:.2f}") if after_cut else "")
+            d.rounded_rectangle([s(x + 6), s(y0 + 6), s(x + 6 + tw(tag, F_TIME) + 10), s(y0 + 24)], radius=s(3), fill=C["tagbg"])
+            text((x + 11, y0 + 15), tag, F_TIME, C["ink"], anchor="lm")
+            if after_cut:
+                d.rectangle([s(x), s(y0), s(x + TW), s(y0 + 3)], fill=C["ink"])
+        # The lanes under the row: time runs from t0 to t1 across the row, as the frames above.
+        ty = y0 + TH + U
+        th = track_h(ri) - U
+        d.rectangle([s(x0r), s(ty), s(x0r + RW), s(ty + th)], fill=C["panel"])
+        px = lambda t: x0r + (t - t0) / (t1 - t0) * RW  # noqa: E731
+        for ci in range(COLS + 1):  # the time grid: one line at each frame's time
+            d.line([(s(x0r + ci * TW), s(ty)), (s(x0r + ci * TW), s(ty + th))], fill=C["grid"], width=1)
+        ly = ty
+        # Motion: how much the picture changes, frame to frame. Flat for over a second is a stall.
+        mh = LANES[0][1]
+        text((PAD, ly + mh / 2), "motion", F_LABEL, C["muted"], anchor="lm")
+        f0, f1 = int(t0 * afps), min(n_frames, int(t1 * afps))
+        top = max(1.0, float(np.percentile(diff, 99)))
+        base = ly + mh - 6
+        pts = [(s(px(i / afps)), s(base - min(1, diff[i] / top) * (mh - 12))) for i in range(f0, f1)]
+        if len(pts) > 1:
+            d.line(pts, fill=C["ink"], width=S, joint="curve")
+        for s0, s1 in stalls:
+            if s1 > t0 and s0 < t1:
+                xa, xb = px(max(s0, t0)), px(min(s1, t1))
+                d.rectangle([s(xa), s(base + 2), s(xb), s(base + 4)], fill=C["muted"])
+                lab = f"still {s1 - s0:.1f} s"
+                text((min(xa + 4, x0r + RW - tw(lab, F_TAG) - 4), ly + 4), lab, F_TAG, C["muted"])
+        ly += mh
+        d.line([(s(x0r), s(ly)), (s(x0r + RW), s(ly))], fill=C["grid"], width=1)
+        # Sound: the waveform, mirrored, with the beats (or onsets) as ticks.
+        sh = LANES[1][1]
+        text((PAD, ly + sh / 2), "sound", F_LABEL, C["muted"], anchor="lm")
+        if has_audio and len(env) > 1:
+            mid = ly + sh / 2
+            e0, e1 = int(t0 * 100), min(len(env), int(t1 * 100))
+            peak = max(1e-4, float(env.max()))
+            for i in range(e0, e1):
+                hgt = env[i] / peak * (sh / 2 - 5)
+                xx = s(px(i / 100))
+                d.line([(xx, s(mid - hgt)), (xx, s(mid + hgt))], fill=C["wave"], width=1)
+            for b in (beats or onsets):
+                if t0 <= b < t1:
+                    d.line([(s(px(b)), s(ly + 2)), (s(px(b)), s(ly + 11))], fill=C["accent"] if beats else C["muted"], width=S)
+        else:
+            text((x0r + U, ly + sh / 2), "no sound", F_TAG, C["faint"], anchor="lm")
+        ly += sh
+        # Faults: one bar over the time each covers, with its symbol and rule id, packed so labels never overlap.
+        if findings:
+            d.line([(s(x0r), s(ly)), (s(x0r + RW), s(ly))], fill=C["grid"], width=1)
+            n = max([p[2] for p in row_faults[ri]], default=-1) + 1
+            text((PAD, ly + max(1, n) * FAULT_LANE / 2), "faults", F_LABEL, C["muted"], anchor="lm")
+            if not row_faults[ri]:
+                text((x0r + U, ly + FAULT_LANE / 2), "none in this row", F_TAG, C["faint"], anchor="lm")
+            for bars, sev, lane, label in row_faults[ri]:
+                col = C["error"] if sev == "error" else C["warn"] if sev else C["muted"]
+                yy = ly + lane * FAULT_LANE + 6
+                for xa, xb in bars:
+                    d.rectangle([s(x0r + xa), s(yy + 12), s(x0r + xb), s(yy + 15)], fill=col)
+                text((x0r + (bars[0][0] if bars and bars[0][0] < RW - 200 else 0) + 1, yy), label, F_TAG, col)
+        # Cuts: a line through every lane at the cut's time.
+        for c in cut_times:
+            if t0 <= c < t1:
+                d.line([(s(px(c)), s(ty)), (s(px(c)), s(ty + th))], fill=C["ink"], width=S)
+
+
+    # The worst alignment misses: crops of the full-size frame, zoomed 5x, with the line to join and where it is.
+    if worst and first:
+        text((PAD, strip_y + U), "worst alignment misses, 5x", F_LABEL, C["muted"])
+    for k, i in enumerate(worst if first else []):
+        eb, tb = i["elBox"], i.get("targetBox") or i["elBox"]
+        if i["axis"] == "y":
+            cx = (eb["x1"] + tb["x0"]) / 2 if tb["x0"] >= eb["x1"] else (eb["x0"] + tb["x1"]) / 2 if tb["x1"] <= eb["x0"] else (eb["x0"] + eb["x1"]) / 2
+            cy = (i["v"] + i["to"]) / 2
+        else:
+            cy = (eb["y1"] + tb["y0"]) / 2 if tb["y0"] >= eb["y1"] else (eb["y0"] + tb["y1"]) / 2 if tb["y1"] <= eb["y0"] else (eb["y0"] + eb["y1"]) / 2
+            cx = (i["v"] + i["to"]) / 2
+        box = (int(cx - CROP_W / 2), int(cy - CROP_H / 2), int(cx + CROP_W / 2), int(cy + CROP_H / 2))
+        box = (max(0, box[0]), max(0, box[1]), min(W, box[2]), min(H, box[3]))
+        if box[2] <= box[0] or box[3] <= box[1]:  # the miss lies outside the frame: nothing to zoom
+            continue
+        Z = ZOOM * S
+        crop = full_frame(i["at"]).crop(box).resize(((box[2] - box[0]) * Z, (box[3] - box[1]) * Z), Image.NEAREST)
+        cd = ImageDraw.Draw(crop)
+        if i["axis"] == "y":
+            cd.line([(0, (i["to"] - box[1]) * Z), (crop.width, (i["to"] - box[1]) * Z)], fill=C["accent"], width=2 * S)
+            cd.line([(0, (i["v"] - box[1]) * Z), (crop.width, (i["v"] - box[1]) * Z)], fill=C["error"], width=2 * S)
+        else:
+            cd.line([((i["to"] - box[0]) * Z, 0), ((i["to"] - box[0]) * Z, crop.height)], fill=C["accent"], width=2 * S)
+            cd.line([((i["v"] - box[0]) * Z, 0), ((i["v"] - box[0]) * Z, crop.height)], fill=C["error"], width=2 * S)
+        xx = PAD + GUT + (k % PER_ROW) * (CROP_W * ZOOM + 2 * U)
+        yy = strip_y + 4 * U + (k // PER_ROW) * STRIP_ROW
+        text((xx, yy), f"x {i['kind']}  {i['el']}  {i['off']:+.1f} px  at {i['at']:.1f} s" + (f"  snap {i['fix']}" if i.get("fix") else ""), F_TAG, C["error"])
+        sheet.paste(crop, (s(xx), s(yy + 2 * U)))
+
+    sheet = sheet.resize((sheet.width // S, sheet.height // S), Image.LANCZOS)
+
+    sheet.save(page_out, quality=88)
+
+
+# The frames of every page: from --thumbs (untell see wrote them in its one decode), else one seek of ffmpeg each,
+# side by side.
+if a.thumbs:
+    for _k, _t in enumerate(times):
+        _f = Path(a.thumbs) / f"t{_k:04d}.png"
+        if _f.exists():
+            _im = Image.open(_f).convert("RGB")
+            THUMBS[_t] = _im if _im.size == (s(TW), s(TH)) else _im.resize((s(TW), s(TH)), Image.LANCZOS)
+times_left = [t_ for t_ in times if t_ not in THUMBS]
+with ThreadPoolExecutor(8) as _ex:
+    THUMBS.update(zip(times_left, _ex.map(frame_at, times_left)))
+# Pages (--per-page): runs of the step grid, each drawn as a sheet of its own, with the same header and lanes.
+if a.per_page and len(times) > a.per_page:
+    chunks = [times[i:i + a.per_page] for i in range(0, len(times), a.per_page)]
+    page_files = [out.with_name(f"{out.stem}-{k + 1}{out.suffix}") for k in range(len(chunks))]
+    for k, (ch, pf) in enumerate(zip(chunks, page_files)):
+        draw_page(ch, pf, f"{k + 1} of {len(chunks)}: {ch[0]:.1f}-{min(dur, ch[-1] + a.step):.1f} s", first=k == 0)
+    pages = [{"sheet": str(pf), "from": ch[0], "to": round(min(dur, ch[-1] + a.step), 3), "frames": len(ch)} for ch, pf in zip(chunks, page_files)]
+    first_sheet = page_files[0]
+else:
+    draw_page(times, out)
+    first_sheet = out
+    pages = [{"sheet": str(out), "from": 0.0, "to": round(dur, 3), "frames": len(times)}]
+
 data = {"video": str(video), "seconds": round(dur, 3), "fps": fps, "size": [W, H], "cuts": [round(c, 3) for c in cut_times], "stalls": stalls,
-        "changes": [round(i / fps, 3) for i in change_starts], "changesOnMarks": on_mark,
-        "loudnessPerSecondDb": per_second, "beats": beats, "onsets": onsets if not beats else [], "sheet": str(out),
-        "findingsOnTimeline": len(findings), "findingsListed": len(notes),
+        "changes": [round(i / afps, 3) for i in change_starts], "changesOnMarks": on_mark,
+        "loudnessPerSecondDb": per_second, "beats": beats, "onsets": onsets if not beats else [], "sheet": str(first_sheet),
+        "findingsOnTimeline": len(findings), "findingsListed": len(notes), "pages": pages,
         "alignWorst": [{k: i.get(k) for k in ("kind", "el", "feature", "axis", "v", "to", "off", "at", "fix", "level")} for i in worst]}
 
 # The phone sheet: frames at the size a phone shows them (PHONE_W px wide, one image pixel to one screen point), one
 # from the middle of each shot (between cuts; evenly spaced when the film has few cuts). Open it at 100 % to read the
 # film as a viewer does: can every text be read, is the subject clear, does anything sit under the platform's controls.
-PHONE_W, PHONE_COLS, PHONE_MAX = 390, 4, 12
-bounds = [0.0] + cut_times + [dur]
-shots = [(a_ + b_) / 2 for a_, b_ in zip(bounds, bounds[1:]) if b_ - a_ >= 0.2]
-if len(shots) < 6:
-    shots = [dur * (k + 0.5) / 8 for k in range(8)]
-if len(shots) > PHONE_MAX:
-    shots = [shots[round(k * (len(shots) - 1) / (PHONE_MAX - 1))] for k in range(PHONE_MAX)]
-PH = round(PHONE_W * H / W)
-F_PHONE = font("mono", 13)
-prows = (len(shots) + PHONE_COLS - 1) // PHONE_COLS
-pg, pl = 16, 22
-phone = Image.new("RGB", (PHONE_COLS * PHONE_W + (PHONE_COLS + 1) * pg, prows * (PH + pl + pg) + pg), C["bg"])
-pd = ImageDraw.Draw(phone)
-for k, t in enumerate(shots):
-    x_, y_ = pg + (k % PHONE_COLS) * (PHONE_W + pg), pg + (k // PHONE_COLS) * (PH + pl + pg)
-    phone.paste(full_frame(t).resize((PHONE_W, PH), Image.LANCZOS), (x_, y_))
-    pd.text((x_, y_ + PH + 4), f"{t:.1f} s", font=F_PHONE, fill=C["muted"])
-phone_out = out.with_name(out.stem + ".phone.jpg")
-phone.save(phone_out, quality=90)
-data["phone"] = str(phone_out)
+phone_out = None
+if not a.no_phone:
+    PHONE_W, PHONE_COLS, PHONE_MAX = 390, 4, 12
+    bounds = [0.0] + cut_times + [dur]
+    shots = [(a_ + b_) / 2 for a_, b_ in zip(bounds, bounds[1:]) if b_ - a_ >= 0.2]
+    if len(shots) < 6:
+        shots = [dur * (k + 0.5) / 8 for k in range(8)]
+    if len(shots) > PHONE_MAX:
+        shots = [shots[round(k * (len(shots) - 1) / (PHONE_MAX - 1))] for k in range(PHONE_MAX)]
+    PH = round(PHONE_W * H / W)
+    F_PHONE = font("mono", 13)
+    prows = (len(shots) + PHONE_COLS - 1) // PHONE_COLS
+    pg, pl = 16, 22
+    phone = Image.new("RGB", (PHONE_COLS * PHONE_W + (PHONE_COLS + 1) * pg, prows * (PH + pl + pg) + pg), C["bg"])
+    pd = ImageDraw.Draw(phone)
+    for k, t in enumerate(shots):
+        x_, y_ = pg + (k % PHONE_COLS) * (PHONE_W + pg), pg + (k // PHONE_COLS) * (PH + pl + pg)
+        phone.paste(full_frame(t).resize((PHONE_W, PH), Image.LANCZOS), (x_, y_))
+        pd.text((x_, y_ + PH + 4), f"{t:.1f} s", font=F_PHONE, fill=C["muted"])
+    phone_out = out.with_name(out.stem + ".phone.jpg")
+    phone.save(phone_out, quality=90)
+    data["phone"] = str(phone_out)
+data["phone"] = str(phone_out) if phone_out else None
 out.with_suffix(".json").write_text(json.dumps(data, indent=1))
-print(f"review sheet: {out}  (cuts {len(cuts)}, picture changes {len(change_starts)}, stalls {len(stalls)}{', onsets ' + str(len(onsets)) if has_audio and not beats else ''})")
-print(f"phone sheet: {phone_out}  (frames at {PHONE_W} px wide: open it at 100 %)")
+print(f"review sheet: {first_sheet}  (cuts {len(cuts)}, picture changes {len(change_starts)}, stalls {len(stalls)}{', onsets ' + str(len(onsets)) if has_audio and not beats else ''})"
+      + (f"; {len(pages)} pages, to {pages[-1]['sheet']}" if len(pages) > 1 else ""))
+if phone_out:
+    print(f"phone sheet: {phone_out}  (frames at {PHONE_W} px wide: open it at 100 %)")

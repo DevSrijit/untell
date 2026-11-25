@@ -530,9 +530,10 @@ function compose(p: BarChartProps, ctx: Ctx, mode: Mode, keyRole?: TypeRole): La
     if (keyIdx !== undefined || grouped) {
       const its = items(true);
       const fitIn = fitScale(its, plotL);
-      // A label inside a bar must fit its length, and in grouped bars also its thickness.
+      // A label inside a bar must fit its length and its thickness. This holds for one series too: a large key value
+      // in a thin bar went past the bar's edges, in the bar's ink colour on the ground.
       const ok = its.every((i) => !isKey(i.c, i.s) || !labelled(i.c, i.s)
-        || (Math.abs(vals[i.s]![i.c]! - base) * fitIn.k >= i.lw + ip * 2 && (!grouped || ctx.lineHeight(valRole(i.c, i.s)) <= thick + inner)));
+        || (Math.abs(vals[i.s]![i.c]! - base) * fitIn.k >= i.lw + ip * 2 && ctx.lineHeight(valRole(i.c, i.s)) <= thick + inner));
       if (ok && (fitIn.k > fitOut.k * 1.04 || (H.inside && fitIn.k >= fitOut.k))) { fit = fitIn; inside = true; }
     }
     const X = (v: number) => fit.x0 + v * fit.k;

@@ -28,7 +28,8 @@ npx untell check film.mp4 --system riso           # the limits of a system, and 
 npx untell check out/other.mp4 --no-scene         # in a project with scene modules
 ```
 
-With no scene, untell reads the file alone: the frames (at the file's own rate, at most 30 fps) and its sound. It
+With no scene, untell reads the file alone: the frames (at the file's own rate, at most 30 fps, and at its own size,
+at most 1920 px on the long side) and its sound. It
 runs each rule that needs only the file: `stall`, `a11y/flash`, `flash-frame`, `dead-space`, and on the
 sound `sound/mix-loudness`, `sound/true-peak`, `sound/first-2s-level`, `sound/phone-loss` and
 `sound/digital-silence`. With `--system <id>` it also runs `ending`, `accident` (a hold on one flat colour: a dip to

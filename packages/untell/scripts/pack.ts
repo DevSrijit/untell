@@ -10,7 +10,8 @@
 // and the marker to add.
 //
 // It reads the repository (src/system, systems/, node_modules/@fontsource/*, scripts/inspect, scripts/listen,
-// scripts/review_sheet.py, scripts/master.py, scripts/media_*.py, scripts/snap/preview.py, scripts/lint/rules.ts)
+// scripts/review_sheet.py, scripts/measure_video.py, scripts/master.py, scripts/media_*.py, scripts/snap/preview.py,
+// scripts/lint/rules.ts)
 // and writes only under packages/untell. It never copies assets/media: the stock licences forbid redistribution.
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -159,6 +160,7 @@ for (const p of pkgs) {
 
 // 4. The tools that read their paths from the environment, copied unchanged.
 //   review_sheet.py   lists findings without a time under its header and reads untell lint --json
+//   measure_video.py  the measures of untell see (it imports checks/cuts.py and common.py from tools/inspect)
 //   media_treat.py    reads the systems folder from UNTELL_SYSTEMS (a missing system is an error there)
 //   media_video.py    takes source.mp4, .mov, .webm or .m4v, and turns the size of a rotated clip
 //   media_cut.py      the cut-out cleanup (cutout_fringe imports clean() from it through the work tree)
@@ -171,7 +173,8 @@ const native = (labRel: string, rel: string, mustHave: string[] = []) => {
   for (const m of mustHave) if (!text.includes(m)) throw new Error(`${labRel} does not read ${m}. untell copies it unchanged and sets ${m}; add it to the script (see the pack script's header).`);
   ship(rel, text);
 };
-native("scripts/review_sheet.py", "tools/review_sheet.py", ["findingsListed"]);
+native("scripts/review_sheet.py", "tools/review_sheet.py", ["findingsListed", "--measures"]);
+native("scripts/measure_video.py", "tools/measure_video.py", ["cut_frames", "film_ground"]);
 native("scripts/media_treat.py", "tools/media_treat.py", ["UNTELL_SYSTEMS"]);
 native("scripts/media_video.py", "tools/media_video.py", ["source.*"]);
 native("scripts/media_cut.py", "tools/media_cut.py");

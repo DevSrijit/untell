@@ -94,18 +94,31 @@ type Probe = { width: number; height: number; fps: number; seconds: number; audi
 
 /** The file's size, frame rate, length and whether it has sound, from ffprobe. */
 export function probe(file: string): Probe {
-  const r = spawnSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,width,height,avg_frame_rate,r_frame_rate:format=duration", "-of", "json", file], { encoding: "utf8" });
+  const r = spawnSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,width,height,avg_frame_rate,r_frame_rate:stream_side_data=rotation:format=duration", "-of", "json", file], { encoding: "utf8" });
   if (r.status !== 0) throw new UsageError(`ffprobe cannot read ${basename(file)}: ${(r.stderr ?? "").trim().split("\n").pop()}. Give a video file (${VIDEO_EXT.join(", ")}).`, "check");
-  const j = JSON.parse(r.stdout) as { streams: { codec_type: string; width?: number; height?: number; avg_frame_rate?: string; r_frame_rate?: string }[]; format: { duration?: string } };
+  const j = JSON.parse(r.stdout) as { streams: { codec_type: string; width?: number; height?: number; avg_frame_rate?: string; r_frame_rate?: string; side_data_list?: { rotation?: number }[] }[]; format: { duration?: string } };
   const v = j.streams.find((s) => s.codec_type === "video");
   if (!v?.width || !v.height) throw new UsageError(`${basename(file)} has no video stream. untell check reads a film; for a sound file, run untell listen analyse <file>.`, "check");
   const rate = (s?: string) => { const [a, b] = (s ?? "0/1").split("/").map(Number); return b ? a! / b : 0; };
   const fps = rate(v.avg_frame_rate) || rate(v.r_frame_rate) || 30;
-  return { width: v.width, height: v.height, fps, seconds: Number(j.format.duration ?? 0), audio: j.streams.some((s) => s.codec_type === "audio") };
+  // A phone clip carries a rotation: ffmpeg turns its frames when it decodes them, so the size turns too.
+  const turned = (v.side_data_list ?? []).some((s) => Math.abs(Math.round(Number(s.rotation ?? 0))) % 180 === 90);
+  return { width: turned ? v.height : v.width, height: turned ? v.width : v.height, fps, seconds: Number(j.format.duration ?? 0), audio: j.streams.some((s) => s.codec_type === "audio") };
 }
 
 /** The frame rate the checks read a file at: its own whole rate, at most 30 (the checks' limits are set at 30 fps). */
 export const readFps = (fps: number) => Math.max(1, Math.min(30, Math.round(fps)));
+
+/**
+ * The frame size the checks read a file at: its own, at most 1920 px on the long side (even numbers). The file rules
+ * measure shares of the frame, so a 4K file reads as its 1080p copy; at full size a 4K minute took over 3 minutes
+ * and 6 GB of memory.
+ */
+export function readSize(w: number, h: number): { width: number; height: number } {
+  const k = Math.min(1, 1920 / Math.max(w, h));
+  if (k === 1) return { width: w, height: h };
+  return { width: Math.max(2, Math.round((w * k) / 2) * 2), height: Math.max(2, Math.round((h * k) / 2) * 2) };
+}
 
 export type EyesOptions = { system?: string; sheet?: boolean; json?: boolean };
 
@@ -122,19 +135,39 @@ export async function eyes(cwdArg: string, videoArg: string, o: EyesOptions = {}
   const S = screenStyle(!!(o.json ? process.stderr.isTTY : process.stdout.isTTY) && !process.env.NO_COLOR);
   // The verdict is the first line: the step lines wait until the screen, as in a check of a scene.
   const steps = stepBuffer(out, !!process.stderr.isTTY && !process.env.NO_COLOR);
-  try { return await eyesSteps(cwd, file, o, steps, out, S); }
+  try {
+    const r = await eyesRun(cwd, file, o, steps.log);
+    if (!r) return 2;
+    const { report, res, ran, reportPath } = r;
+    printEyes(report, res, { log: out, steps: steps.take(), S, file: shownPath(cwd, file), system: o.system ?? null, reportPath: relative(cwd, reportPath) || reportPath, cwd, ran });
+    if (o.json) console.log(JSON.stringify(report, null, 1));
+    return report.ok ? 0 : 1;
+  }
   finally { steps.flush(); }
 }
 
-async function eyesSteps(cwd: string, file: string, o: EyesOptions, steps: ReturnType<typeof stepBuffer>, out: (s: string) => void, S: ReturnType<typeof screenStyle>): Promise<number> {
-  const log = steps.log;
-  const shown = relative(cwd, file) || basename(file);
-  const p = probe(file);
-  const fps = readFps(p.fps);
-  log(`untell check  ${shown} · the file only · ${p.seconds.toFixed(1)} s · ${p.width} × ${p.height} · ${o.system ? `limits of ${o.system}` : "default limits (no system)"}`);
+/** A file's path as the screen shows it: relative to the folder, or absolute when the file is outside it. */
+export const shownPath = (cwd: string, file: string) => { const r = relative(cwd, file); return !r ? basename(file) : r.startsWith("..") ? file : r; };
+
+export type EyesRun = { report: CheckReport; res: DetectorResult; ran: string[]; reportPath: string };
+
+/**
+ * The rules that need only the file, run on it, with no screen: the report (also written to
+ * .untell/eyes/<file>/report.json), the detector's result and the rules that ran. `log` takes the step lines. Null when
+ * no Python can run the detector (the reason is logged). untell check <video> prints it; untell see reads it.
+ */
+export async function eyesRun(cwdArg: string, fileArg: string, o: { system?: string; sheet?: boolean }, log: (s: string) => void): Promise<EyesRun | null> {
+  const cwd = resolve(cwdArg), file = resolve(cwd, fileArg);
+  if (o.system) readTokens(cwd, o.system);
+  const shown = shownPath(cwd, file);
+  const p0 = probe(file);
+  const fps = readFps(p0.fps);
+  const size = readSize(p0.width, p0.height);
+  const p = { ...p0, ...size };
+  log(`untell check  ${shown} · the file only · ${p0.seconds.toFixed(1)} s · ${p0.width} × ${p0.height}${size.width !== p0.width ? ` (read at ${size.width} × ${size.height})` : ""} · ${o.system ? `limits of ${o.system}` : "default limits (no system)"}`);
 
   const py = ensureDetectorPython(cwd, log);
-  if (!py) return 2;
+  if (!py) return null;
 
   // The root the detector reads, one per file.
   const slug = basename(file).replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "film";
@@ -154,14 +187,14 @@ async function eyesSteps(cwd: string, file: string, o: EyesOptions, steps: Retur
 
   // 1. The frames, once per version of the file.
   const t0 = Date.now();
-  const stamp = JSON.stringify({ file, size: statSync(file).size, mtime: statSync(file).mtimeMs, fps });
+  const stamp = JSON.stringify({ file, size: statSync(file).size, mtime: statSync(file).mtimeMs, fps, ...(size.width !== p0.width ? { read: size } : {}) });
   const stampFile = join(rec, "source.json");
   let n: number;
   const cached = existsSync(stampFile) && readFileSync(stampFile, "utf8") === stamp;
   if (!cached) {
     rmSync(join(rec, "frames"), { recursive: true, force: true });
     mkdirSync(join(rec, "frames"), { recursive: true });
-    const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-i", file, "-vf", `fps=${fps}`, "-q:v", "3", "-start_number", "0", join(rec, "frames", "f%04d.jpg")], { encoding: "utf8", timeout: 1800000 });
+    const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-i", file, "-vf", `fps=${fps}${size.width !== p0.width ? `,scale=${size.width}:${size.height}:flags=area` : ""}`, "-q:v", "3", "-start_number", "0", join(rec, "frames", "f%04d.jpg")], { encoding: "utf8", timeout: 1800000 });
     if (r.status !== 0) throw new Error(`ffmpeg could not read the frames of ${shown}: ${(r.stderr ?? "").trim().split("\n").slice(-2).join(" ")}`);
   }
   n = 0;
@@ -234,9 +267,7 @@ async function eyesSteps(cwd: string, file: string, o: EyesOptions, steps: Retur
     report.sheet = { image: sh.sheet, json: sh.json, phone: sh.phone };
     save();
   }
-  printEyes(report, res, { log: out, steps: steps.take(), S, file: shown, system: o.system ?? null, reportPath: relative(cwd, reportPath), cwd, ran });
-  if (o.json) console.log(JSON.stringify(report, null, 1));
-  return report.ok ? 0 : 1;
+  return { report, res, ran, reportPath };
 }
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;

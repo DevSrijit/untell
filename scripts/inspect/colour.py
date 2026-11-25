@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage
 
-from common import font, label, load, out_dir, parse_rgb, to_oklab
+from common import font, kmeans, label, load, out_dir, parse_rgb, to_oklab
 from heat import ground_colour
 
 OFF_PALETTE = 0.035  # OKLab distance from every role and every two-role blend
@@ -21,18 +21,6 @@ ACCENT_NEAR = 0.05
 def hexrgb(h):
     h = h.lstrip("#")
     return np.array([int(h[i:i + 2], 16) for i in (0, 2, 4)], dtype=np.float32)
-
-
-def kmeans(x, k=8, iters=14, seed=3):
-    rng = np.random.default_rng(seed)
-    c = x[rng.choice(len(x), k, replace=False)]
-    for _ in range(iters):
-        d = ((x[:, None, :] - c[None]) ** 2).sum(-1)
-        a = d.argmin(1)
-        for j in range(k):
-            if (a == j).any():
-                c[j] = x[a == j].mean(0)
-    return c, a
 
 
 def seg_dist(p, a, b):

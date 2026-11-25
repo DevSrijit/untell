@@ -19,6 +19,7 @@ Usage: untell <command> [options]
   render      Render the final file (both frameworks), master it, and print its size, loudness and true peak
   snap        Show each alignment near miss as a hunk, preview the fix, apply the hunks you accept
   sheet       A whole film in one image, for a model to read
+  see         Give a model any video file: its measures as one JSON sized for a context window, and contact sheets
   media       Bring in photos, footage, music, effects and 3D models; cut out, grade, read beats
   listen      What a track or a mix sounds like, as data: beats, sections, the drop, loudness
   master      Bring a render's mix to its system's loudness target and limit its true peak
@@ -283,6 +284,44 @@ again, then master again.
 Example: untell master out/heron-loop.mp4 --system riso
 Exit: 0 on target, 1 off target or crushed, 2 wrong use or ffmpeg is missing.`,
 
+  see: `untell see <video> [--json] [--out <dir>] [--budget <tokens>] [--theme dark|light] [--system <id>]
+
+Give a model a video. A model cannot watch a film: untell see measures any video file and writes what a model
+can read. It needs no project, no scene and no system, and it assumes no frame shape, no length and no sound.
+
+It writes into --out (default .untell/see/<file name>/):
+  see.json        one versioned document (version 2), sized for a context window: the file (length, frame size and
+                  aspect, frame rate, codecs, bitrate, sound), the timeline (each cut with its strength; each soft
+                  change: a fade, a wipe or a move with no hard cut; each shot with how it starts, its motion,
+                  palette, brightness and ink grid), the pace (shots, stalls with the stall rule's verdict, the first
+                  second),
+                  the colour, the text (where detail of text size shows; the words when tesseract is on PATH), the
+                  sound (loudness, true peak, range, a level curve, onsets, silent spans, the tempo with its trust,
+                  how the cuts sit on the onsets), the findings of the rules that need only the file (the ids of
+                  untell check <video>), the pictures, and notes: what was dropped to fit, what was not measured.
+                  A measure that cannot be made is null, and why.<key> says why.
+  sheet-<n>.jpg   contact sheets in pages: 8 to 12 frames each, about 1500 px on the long side, each frame with
+                  its time, with the motion, the sound and the findings under each row.
+stdout: what the file is, the timeline, then where the pictures and the JSON are.
+
+  --json            print see.json alone on stdout (the progress goes to stderr)
+  --out <dir>       the folder for see.json and the pages
+  --budget <n>      the size of see.json in tokens: 1000 or more (default 6000). The estimate is the characters of
+                    see.json divided by 3, rounded up. To fit, untell see drops detail in a fixed order: the onset
+                    times, the text zones, palettes and ink grids of each shot, a coarser level curve, the measured
+                    values of each finding, the words of each shot, then the form of the shots and the cuts, and
+                    last the detail of the findings and the notes (docs/guide/commands.md lists all 20 steps).
+                    notes.dropped lists what it dropped. The cuts, the shots and the causes stay longest.
+  --theme dark|light  the pages' theme (default dark; UNTELL_THEME sets it too)
+  --system <id>     the rules take their limits from a system, as untell check <video> --system <id> does
+
+It needs ffmpeg and Python 3.10 or later with numpy, Pillow and scipy (untell sets them up in .venv-media once).
+The tempo needs the listen tools (untell listen setup); without them it is null, with the reason.
+The words need tesseract on PATH (optional; untell ships no OCR). UNTELL_NO_OCR=1 leaves them out.
+
+Example: untell see clip.mp4
+Exit: 0 written, 1 it failed, 2 wrong use or a missing tool.`,
+
   sheet: `untell sheet <video> [--out <file.jpg>] [--step <s>] [--cols <n>] [--beats <file or track>] [--findings <file.json>] [--align <align.json>] [--capture <capture.json>] [--theme dark|light] [--json]
 
 Makes the review sheet: a whole film in one image. Each row is a strip of time: frames every --step seconds
@@ -385,6 +424,7 @@ export const COMMAND_TABLE: Record<string, { subs?: Record<string, string[]>; fl
   render: { flags: [...COMMON, "--out", "--no-master", "--system", "--keep-bitrate", "--via", "--no-cache", "--hyperframes", "--json"] },
   check: { flags: [...COMMON, "--sheet", "--json", "--hyperframes", "--no-record", "--full", "--rules", "--explain", "--film", "--render", "--no-detect", "--demo", "--no-cache", "--no-reuse", "--theme", "--system", "--no-scene", "--not-measured"] },
   sheet: { flags: [...COMMON, "--out", "--step", "--cols", "--beats", "--findings", "--align", "--capture", "--theme", "--json"] },
+  see: { flags: [...COMMON, "--json", "--out", "--budget", "--theme", "--system"] },
   listen: {
     flags: [...COMMON, "--json", "--theme"],
     subs: {

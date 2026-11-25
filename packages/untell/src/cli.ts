@@ -21,7 +21,7 @@ const opt = (name: string) => { const i = args.indexOf(name); const v = i >= 0 ?
 // Flags that take a value. Their values are not paths or command names.
 const valued = new Set(["--framework", "--agent", "--hyperframes", "--cwd", "--as", "--kind", "--source", "--licence", "--license", "--role", "--system", "--height",
   "--explain", "--scope", "--max-warnings", "--out", "--step", "--beats", "--findings", "--cols", "--film", "--render", "--lufs", "--peak", "--nodes",
-  "--at", "--scene", "--via", "--new", "--align", "--theme", "--drop", "--capture", "--from"]);
+  "--at", "--scene", "--via", "--new", "--align", "--theme", "--drop", "--capture", "--from", "--budget"]);
 // --preview, --apply and --unapply take hunk ids separated by commas or spaces (or both); --preview alone means all.
 const ID_FLAGS = ["--preview", "--apply", "--unapply"];
 const idsAfter = (k: string) => {
@@ -187,6 +187,11 @@ async function main(): Promise<number> {
       if (flag("--json")) console.log(JSON.stringify({ version: 1, sheet: r.sheet, json: r.json, phone: r.phone }, null, 1));
       else console.log(`numbers: ${r.json}\nOpen the sheet as an image and read it.`);
       return r.code;
+    }
+    case "see": {
+      if (rest.length > 1) throw new UsageError(`untell see takes one video file, not ${rest.length}: untell see <video>.`, "see");
+      const { see } = await import("./see");
+      return see(cwd, rest[0], { json: flag("--json"), out: opt("--out"), budget: opt("--budget"), theme: opt("--theme"), system: opt("--system") });
     }
     case "systems": { const { printSystems } = await import("./systems"); printSystems(cwd); return 0; }
     case "media": {

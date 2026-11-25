@@ -11,6 +11,8 @@ writes README.md and the npm page. Edit this file, not README.md. -->
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-111"></a>
 </p>
 
+<p align="center"><img alt="Four example films side by side, each in its own design system, all made from code" src="docs/assets/films.gif" width="880"></p>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sheet-reel-dark.jpg">
   <img alt="An 11 second film on one review sheet: frames every half second, the motion line, the sound and a mark on each cut" src="docs/assets/sheet-reel-light.jpg" width="880">
@@ -70,6 +72,31 @@ the skill tells it to lint after each edit, check, render, and read the review s
 
 `untell listen` finds the tempo, the sections and the drops. `music({ peakAt })` puts a drop on a cut.
 
+## It gives a model any video
+
+A model cannot watch a video. `untell see` reads any video file, with no project, and writes what a model needs to
+understand it: the cuts, the pace, the colours, the words on screen, the sound and the faults, in one small JSON
+document, with contact sheets that carry the time of each frame.
+
+```text
+$ npx untell see hero-1080.mp4
+file      40.6 s · 1920 × 1080 (16:9) · 30 fps · h264 · 1.3 Mbit/s
+sound     aac · -16 LUFS · true peak -1.1 dBTP · range 4 LU · 90 onsets
+pace      33 shots · mean 1.2 s · shortest 0.43 s · still 15 % of the time
+colour    #0E0E0F 43 %, #F8F8F8 25 %, #E6E5D7 14 %, #252455 14 % · light on dark 64 % of the time
+
+timeline
+     5.5-6.0    still  dark  #070707  "SAME AGENT."
+     6.0-6.5    still  light #F5F5F7  "Same agent."
+     7.4-7.8    high   dark  #0D0D0D  "05/20 COURTSIDE SAME SCRIPT."
+     …
+findings  1 error, 2 warnings: stall 20.3-22.1 s; dead-space 20.3-22.1 s; dead-space 31.4-35.1 s
+pictures  4 pages, each frame with its time
+```
+
+In a test, a model that got only this output, and not the video, named the film's eight parts with their times,
+its look, its sound and its three faults. [Commands](docs/guide/commands.md)
+
 ## {{systems}} design systems
 
 <picture>
@@ -120,6 +147,7 @@ Take as much of untell as you need. Each level works without the next.
 | `untell check` | Record the film and run every check; `--sheet` adds the review sheet; a video alone gets the rules that read the file |
 | `untell render` | Render the final file in either framework and master it |
 | `untell snap` | Show each alignment miss as a hunk, preview it, apply the hunks you accept |
+| `untell see` | Give a model any video file: one small JSON document and contact sheets |
 | `untell sheet` | A whole film in one image |
 | `untell listen` | What a track or a mix sounds like, as data |
 | `untell master` | Bring the mix to the system's loudness target |
@@ -137,7 +165,7 @@ Node 20 or later, Google Chrome and ffmpeg. The checks need Python 3.10 or later
 your Python lacks them, `untell listen setup` adds its tools, and `untell media setup` adds the cut-out tools.
 `untell doctor` shows what is missing. [Install](docs/guide/install.md)
 
-## Known limits in 0.1.0
+## Known limits
 
 - untell checks only what it can measure. A film that passes can still be dull: read the review sheet.
 - The checks do not compare a product from shot to shot. They do not judge whether a picture suits the film.

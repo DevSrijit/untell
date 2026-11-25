@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.1.1
+
+### Commands
+
+- `untell see <video>` gives a model any video file. It writes `see.json`: one versioned document, sized for a
+  context window (6000 tokens by default, `--budget` sets it). It holds the file's facts, every cut with its
+  strength, each shot with its motion, palette, brightness and ink grid, the pace, the colour, where text shows
+  (and its words when tesseract is on the PATH), the sound, and the findings of the rules that need only the file.
+  It also writes contact sheets in pages of 8 to 12 frames, each frame with its time. A measure that cannot be made
+  is `null`, with the reason. To fit the budget, it drops detail in a fixed order and lists what it dropped.
+- The measures are one module (`src/measures.ts`), which takes a file path and returns typed data.
+- `see.json` is at version 2. A shot also ends at a soft change that replaces the picture (a fade, a wipe or a large
+  move with no hard cut), and each shot says how it starts. Each stall says what the stall rule makes of it, and the
+  findings give the limits they used. When there are more than 64 onsets, the onset times are spread over the whole
+  film. A shot where OCR read nothing has `"words": null` with the reason. The key says that the words are OCR and
+  noisy, and the level curve says what it measures.
+
+### Fixes
+
+- `untell check <video>` and `untell sheet` read a rotated phone clip at the size it shows at. Before, they read the
+  coded size, so the frames were squashed.
+- `untell check <video>` prints a file outside the folder by its full path, not as `../../..`.
+- The flash check reads the sRGB curve of each 8-bit level from a table. On a 3-minute file at 1080p, the file rules
+  take about 50 s, not about 88 s. The findings are the same.
+- `untell check <video>` reads a file larger than 1920 px on its long side at a 1920 px copy. The file rules measure
+  shares of the frame. A 4K minute took about 210 s and 6 GB of memory, and now takes about 26 s and 3 GB. On 4K
+  footage at the edge of stillness, a stall can start or end a few frames apart from before.
+- A product shot that holds its pose stands with the drawn model on the centre of its room. Before, the block centred
+  the model's box, so a turned model stood off the centre (36 px in the Keynote example).
+- The end cards of the Keynote, Matte and Studio examples stand on the centre of the frame.
+- `barChart` keeps a key value out of a bar that is thinner than the value's line. Before, a large value in a thin bar
+  went past the bar's edges.
+- The README states the licences of Remotion and HyperFrames.
+
 ## 0.1.0
 
 The first release.

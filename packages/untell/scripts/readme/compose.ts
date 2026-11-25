@@ -199,6 +199,16 @@ async function guide(ctx: Ctx) {
   if (r.status !== 0) throw new Error(r.stderr);
 }
 
+/** The moving picture at the top: four example films side by side, from their renders (out/render), 7 s at 12 fps. */
+function films(ctx: Ctx) {
+  const W = 220, H = 391, FPS = 12, ids = ["riso", "keynote", "matte", "kinetic"];
+  const ins = ids.flatMap((id) => ["-ss", "1", "-t", "7", "-i", join(ctx.root, `out/render/reel-${id}.mastered.mp4`)]);
+  const parts = ids.map((_, i) => `[${i}:v]fps=${FPS},scale=${W}:${H}:flags=lanczos[v${i}]`).join(";");
+  const graph = `${parts};${ids.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${ids.length},split[x][y];[x]palettegen=max_colors=160:stats_mode=diff[p];[y][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`;
+  const r = spawnSync("ffmpeg", ["-v", "error", "-y", ...ins, "-filter_complex", graph, "-loop", "0", join(ctx.out, "films.gif")], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(r.stderr);
+}
+
 export async function composeAll(o: { root: string; raw: string; out: string; work: string }) {
   mkdirSync(join(o.work, "compose"), { recursive: true });
   for (const f of readdirSync(o.out)) if (/\.(png|gif|jpg)$/.test(f)) rmSync(join(o.out, f));
@@ -206,7 +216,7 @@ export async function composeAll(o: { root: string; raw: string; out: string; wo
   const pg = await (await browser.newContext({ deviceScaleFactor: 2, viewport: { width: 1000, height: 800 } })).newPage();
   const ctx: Ctx = { ...o, page: pg };
   try {
-    top(ctx);
+    top(ctx); films(ctx);
     await reels(ctx); await check(ctx); await align(ctx); await sound(ctx); await systems(ctx); await guide(ctx);
   } finally { await browser.close(); }
   if (!existsSync(join(o.out, "check.png"))) throw new Error("no check picture");

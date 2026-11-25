@@ -40,3 +40,19 @@ test("matrix: in a column, the header and the cells share one centre line", asyn
     }
   }
 });
+
+// A horizontal chart of five shares in a short box: each bar is thinner than the key value's line. The key value
+// must then sit outside its bar, in the ink of the ground, not inside it in the ink of the bar.
+test("a key value does not go inside a bar that is thinner than its line", () => {
+  const s = SYSTEMS.find((x) => x.id === "spec")!;
+  const ctx = makeCtx(s, 1080, 1920, (t, r) => t.length * s.type[r].size * 1080 * 0.55);
+  const S = ctx.safe, x = S.left, w = S.right - S.left;
+  const warn = console.warn; console.warn = () => {};
+  const nodes = barChart({ id: "u", x, y: S.top + 300, w, h: 520, title: "Home electricity by use, %", categories: ["Heating", "Appliances", "Hot water", "Lighting", "Cooking"],
+    series: [{ label: "Share", values: [42, 27, 18, 8, 5] }], key: 0, orientation: "horizontal", format: { suffix: " %" }, at: 1 }, ctx);
+  console.warn = warn;
+  const val = nodes.find((n): n is TextNode => n.kind === "text" && n.id.startsWith("u-val-0-"))!;
+  const bar = nodes.find((n) => n.id.startsWith("u-bar-0-"))! as unknown as { box: { h: number } };
+  expect(ctx.lineHeight(val.role)).toBeGreaterThan(bar.box.h);
+  expect(val.color).not.toBe("onAccent");
+});

@@ -67,7 +67,8 @@ describe("anchors: the marker first, then the fallback, else a stop that names t
 describe("what the pack writes", () => {
   const reg = registryDir();
   test("the tools that read the environment are the repository's files, byte for byte", () => {
-    for (const [lab, rel] of [["scripts/review_sheet.py", "tools/review_sheet.py"], ["scripts/master.py", "tools/master.py"], ["scripts/media_treat.py", "tools/media_treat.py"],
+    for (const [lab, rel] of [["scripts/review_sheet.py", "tools/review_sheet.py"], ["scripts/measure_video.py", "tools/measure_video.py"], ["scripts/listen/tempo.py", "tools/listen/tempo.py"],
+      ["scripts/master.py", "tools/master.py"], ["scripts/media_treat.py", "tools/media_treat.py"],
       ["scripts/media_video.py", "tools/media_video.py"], ["scripts/media_cut.py", "tools/media_cut.py"], ["scripts/snap/preview.py", "tools/snap/preview.py"]] as const) {
       expect(readFileSync(join(reg, rel), "utf8")).toBe(readFileSync(join(LAB, lab), "utf8"));
     }

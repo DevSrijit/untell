@@ -186,6 +186,19 @@ def to_oklab(rgb: np.ndarray) -> np.ndarray:
     return lms @ M2.T
 
 
+def kmeans(x, k=8, iters=14, seed=3):
+    """k-means on the rows of x (n, d): the centres and the cluster of each row. colour.py and untell see share it."""
+    rng = np.random.default_rng(seed)
+    c = x[rng.choice(len(x), k, replace=False)]
+    for _ in range(iters):
+        d = ((x[:, None, :] - c[None]) ** 2).sum(-1)
+        a = d.argmin(1)
+        for j in range(k):
+            if (a == j).any():
+                c[j] = x[a == j].mean(0)
+    return c, a
+
+
 def parse_rgb(css: str | None):
     if not css or not css.startswith("rgb"):
         return None

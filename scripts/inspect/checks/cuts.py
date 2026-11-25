@@ -29,13 +29,21 @@ WHOLE_ISOLATE = 0.6
 MIN_SWAP, SWAP_SHARE = 0.015, 0.3
 
 
-def cut_frames(grey):
+def film_ground(grey):
+    """The ground: the most common grey level of the film (bins of 4), read on every (n // 60)th frame."""
+    n = len(grey)
+    vals, counts = np.unique((np.asarray(grey[:: max(1, n // 60)], dtype=np.int16) // 4).ravel(), return_counts=True)
+    return int(vals[counts.argmax()]) * 4 + 2
+
+
+def cut_frames(grey, ground=None):
+    """`ground`: the film's ground (film_ground), for a caller that reads a long film in parts."""
     g = np.asarray(grey, dtype=np.int16)
     n = len(g)
     if n < 3:
         return []
-    vals, counts = np.unique((g[:: max(1, n // 60)] // 4).ravel(), return_counts=True)
-    ground = int(vals[counts.argmax()]) * 4 + 2
+    if ground is None:
+        ground = film_ground(g)
     off = np.abs(g - ground) > GROUND_DELTA
     whole = np.zeros(n)
     region = np.zeros(n)
