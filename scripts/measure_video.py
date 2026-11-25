@@ -169,7 +169,7 @@ def text_cells(grey):
 def ocr_words(tesseract, image):
     """The words that tesseract reads in one image with a confidence of 70 or more, in reading order."""
     # One thread for each tesseract: the caller runs several at once.
-    r_ = subprocess.run([tesseract, str(image), "stdout", "--psm", "11", "tsv"], capture_output=True, text=True, timeout=60,
+    r_ = subprocess.run([tesseract, str(image), "stdout", "--psm", "11", "tsv"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
                         env={**os.environ, "OMP_THREAD_LIMIT": "1"})
     words = []
     for line in r_.stdout.splitlines()[1:]:
@@ -325,7 +325,8 @@ def _picture(a, W, H, F, work):
            "-map", "[s]", "-f", "rawvideo", str(work / "small.rgb"),
            "-map", "[t]", "-q:v", "2", "-start_number", "0", str(work / "samples" / "s%05d.jpg"),
            *(["-map", "[th]", "-start_number", "0", str(Path(a.thumbs) / "t%04d.png")] if a.thumbs else [])]
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    # Output that is not valid UTF-8 (odd bytes in OCR text, or in a file's tags) must not stop the measures.
+    p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
         sys.exit(f"measure: ffmpeg could not read the frames: {p.stderr.strip()[-300:]}")
     grey = np.memmap(work / "grey.u8", dtype=np.uint8, mode="r")
